@@ -92,17 +92,20 @@ async function main(): Promise<void> {
   });
 
   // Graceful shutdown
-  process.on("SIGINT", async () => {
-    logger.info("tokenos", "shutting down...");
-    await watcher.close();
+  const shutdown = async (signal: string) => {
+    logger.info("tokenos", `shutting down (${signal})...`);
+    try {
+      await watcher.close();
+    } catch {
+      // ignore
+    }
     process.exit(0);
-  });
+  };
 
-  process.on("SIGTERM", async () => {
-    logger.info("tokenos", "shutting down...");
-    await watcher.close();
-    process.exit(0);
-  });
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.stdin.on("close", () => shutdown("client disconnected"));
+  process.stdout.on("close", () => shutdown("stdout closed"));
 }
 
 main().catch((err) => {

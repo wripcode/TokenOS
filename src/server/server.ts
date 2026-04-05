@@ -619,5 +619,9 @@ export async function startServer(): Promise<void> {
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  // logger handles the "server running on stdio" via viteLike inside main.ts, but let's keep it quiet here or as debug
+  
+  transport.onclose = async () => {
+    logger.info("server", "stdio transport closed (client disconnected)");
+    process.exit(0);
+  };
 }
