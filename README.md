@@ -1,5 +1,7 @@
 # TokenOS
 
+[![npm version](https://badge.fury.io/js/tokenos.svg)](https://badge.fury.io/js/tokenos)
+
 > **Local-first codebase graph intelligence for AI assistants — powered by SQLite, ts-morph, and Ollama.**
 
 `TokenOS` is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that statically analyses your TypeScript/TSX codebase, stores it as a structural dependency graph in SQLite, optionally enriches nodes with semantic embeddings via Ollama, and exposes high-precision query tools for AI coding assistants like Claude, Cursor, or any MCP-compatible client.
@@ -33,36 +35,14 @@
 
 ## Quick Start
 
-### 1. Install
+Run TokenOS on any codebase instantly via `npx`. No installation, setup, or config files required!
 
 ```bash
-git clone https://github.com/wripcode/TokenOS.git
-cd TokenOS
-npm install
-```
+# In your project folder
+npx -y tokenos .
 
-### 2. Configure
-
-Edit `tokenos.config.json` in the project root:
-
-```json
-{
-  "watchPath": "/absolute/path/to/your/project",
-  "ollama": {
-    "url": "http://localhost:11434",
-    "model": "mxbai-embed-large:latest"
-  },
-  "ui": {
-    "enabled": false,
-    "port": 3333
-  }
-}
-```
-
-### 3. Run
-
-```bash
-npm run dev
+# Or for a specific path
+npx -y tokenos /absolute/path/to/project
 ```
 
 That's it. The server will:
@@ -84,10 +64,11 @@ That's it. The server will:
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start the MCP server (reads `tokenos.config.json`) |
-| `npm run reset` | Delete the project database — next `npm run dev` re-indexes from scratch |
-| `npm run build` | Compile TypeScript to `dist/` |
-| `npm run index -- /path` | One-shot indexing of a directory (no server, no watcher) |
+| `npx -y tokenos .` | Index the current folder and start the MCP server |
+| `npx -y tokenos /path` | Index a specific folder and start the server |
+| `npx tokenos --version` | Print the installed version |
+| `npm run dev` | *(Cloned repo only)* Start in local development mode |
+| `npm run reset` | *(Cloned repo only)* Wipe the development database |
 
 ---
 
@@ -120,35 +101,26 @@ Three tables are created automatically:
 
 ## MCP Client Configuration
 
-### Claude Desktop
+Add TokenOS to your AI assistant's config file (e.g., `claude_desktop_config.json`, `~/.claude.json`, or Antigravity's `mcp_config.json`). 
 
-Add to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "tokenos": {
-      "command": "node",
-      "args": ["/absolute/path/to/TokenOS/dist/main.js"]
-    }
-  }
-}
-```
-
-### Development mode (tsx)
+You can add multiple entries — one for each project you want AI access to.
 
 ```json
 {
   "mcpServers": {
-    "tokenos": {
+    "tokenos-myapp": {
       "command": "npx",
-      "args": ["tsx", "/absolute/path/to/TokenOS/src/main.ts"]
+      "args": ["-y", "tokenos", "/absolute/path/to/myapp"]
+    },
+    "tokenos-backend": {
+      "command": "npx",
+      "args": ["-y", "tokenos", "/absolute/path/to/backend-api"]
     }
   }
 }
 ```
 
-> **Note:** No need to pass the project path as CLI arg — it reads from `tokenos.config.json`.
+> **Note:** Each entry runs an isolated TokenOS server and stores its data strictly inside that project's `.tokenos/` folder. They do not conflict.
 
 ---
 
