@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { existsSync } from "fs";
 import { config } from "./config.js";
 import { startServer } from "./server/index.js";

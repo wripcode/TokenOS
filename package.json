@@ -3,11 +3,40 @@
   "version": "1.1.0",
   "description": "TokenOS is a memory layer for AI that reduces token usage by retrieving only the most relevant code and context.",
   "type": "module",
+  "bin": {
+    "tokenos": "dist/main.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "USAGE.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "codebase",
+    "graph",
+    "ai",
+    "claude",
+    "cursor",
+    "antigravity-ide",
+    "ai-memory",
+    "memory",
+    "typescript"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wripcode/tokenos.git"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/main.ts",
     "reset": "tsx src/reset.ts",
-    "index": "tsx src/indexer/cli.ts"
+    "index": "tsx src/indexer/cli.ts",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.8.0",

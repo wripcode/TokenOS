@@ -1,0 +1,14 @@
+src/
+*.config.json
+.tokenos/
+*.db
+.env
+.env.*
+*.log
+tsconfig.json
+.github/
+dev-data/
+test-fixtures/
+.agents/
+.vscode/
+.DS_Store
