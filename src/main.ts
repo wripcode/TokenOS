@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 
+// ───── Version flag ───────────────────────────────────────────────────────────
+if (process.argv.includes("--version")) {
+  console.log("1.1.1");
+  process.exit(0);
+}
+
 import { existsSync } from "fs";
 import { config } from "./config.js";
 import { startServer } from "./server/index.js";
@@ -49,20 +55,6 @@ async function main(): Promise<void> {
   const totals = await indexDirectory(config.watchPath);
   logger.success("tokenos", `initial index complete: ${totals.files} files, ${totals.nodes} nodes, ${totals.edges} edges`);
 
-  // Back-fill embeddings for newly indexed nodes (graceful if Ollama is offline)
-  const ollamaOk = await checkOllama();
-  if (ollamaOk) {
-    try {
-      logger.info("tokenos", "backfilling embeddings...");
-      const { updated, skipped } = await backfillEmbeddings();
-      logger.success("tokenos", `embeddings ready: ${updated} updated, ${skipped} skipped`);
-    } catch {
-      logger.warn("tokenos", "embeddings skipped (Ollama unavailable)");
-    }
-  } else {
-    logger.warn("tokenos", "embeddings skipped (Ollama offline)");
-  }
-
   // Compute importance scores for all nodes
   const { updated: scored } = computeAllImportance();
   logger.success("tokenos", `importance scoring complete: ${scored} nodes scored`);
@@ -72,11 +64,25 @@ async function main(): Promise<void> {
     onReady: () => logger.success("watcher", "ready"),
   });
 
-  // Start MCP stdio server (blocks until client disconnects)
+  // Start MCP stdio server first — client connects immediately without waiting for embeddings
+  const ollamaOk = await checkOllama();
   await startServer();
 
+  // Back-fill embeddings non-blocking — large projects won't timeout the MCP handshake
+  if (ollamaOk) {
+    backfillEmbeddings()
+      .then(({ updated, skipped }: { updated: number; skipped: number }) => {
+        logger.success("tokenos", `embeddings ready: ${updated} updated, ${skipped} skipped`);
+      })
+      .catch(() => {
+        logger.warn("tokenos", "embeddings backfill failed");
+      });
+  } else {
+    logger.warn("tokenos", "embeddings skipped (Ollama offline)");
+  }
+
   logger.viteLike({
-    version: "1.0.0",
+    version: "1.1.1",
     timeMs: Date.now() - bootStart,
     localUrl: config.ui.enabled ? `http://localhost:${config.ui.port}/graph` : undefined,
     ollamaOk,
