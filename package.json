@@ -1,0 +1,27 @@
+{
+  "name": "tokenos",
+  "version": "1.1.0",
+  "description": "TokenOS is a memory layer for AI that reduces token usage by retrieving only the most relevant code and context.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/main.ts",
+    "reset": "tsx src/reset.ts",
+    "index": "tsx src/indexer/cli.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.8.0",
+    "better-sqlite3": "^11.9.1",
+    "chokidar": "^4.0.3",
+    "ignore": "^7.0.5",
+    "picocolors": "^1.1.1",
+    "ts-morph": "^25.0.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.13.13",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
