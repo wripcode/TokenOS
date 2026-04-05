@@ -101,9 +101,40 @@ Three tables are created automatically:
 
 ## MCP Client Configuration
 
-Add TokenOS to your AI assistant's config file (e.g., `claude_desktop_config.json`, `~/.claude.json`, or Antigravity's `mcp_config.json`). 
+You can add multiple entries — one for each project you want AI access to. They do not conflict, as each creates an isolated database inside its respective project folder.
 
-You can add multiple entries — one for each project you want AI access to.
+### Antigravity IDE
+
+Open `~/.gemini/antigravity/mcp_config.json` and add your projects under `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "tokenos-myapp": {
+      "command": "npx",
+      "args": ["-y", "tokenos", "/absolute/path/to/myapp"],
+      "env": {}
+    }
+  }
+}
+```
+
+### Claude Code
+
+Open `~/.claude.json` and add underneath `"mcpServers"`:
+
+```json
+"tokenos-myapp": {
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "tokenos", "/absolute/path/to/myapp"],
+  "env": {}
+}
+```
+
+### Claude Desktop
+
+Open `~/Library/Application Support/Claude/claude_desktop_config.json` and add:
 
 ```json
 {
@@ -111,16 +142,10 @@ You can add multiple entries — one for each project you want AI access to.
     "tokenos-myapp": {
       "command": "npx",
       "args": ["-y", "tokenos", "/absolute/path/to/myapp"]
-    },
-    "tokenos-backend": {
-      "command": "npx",
-      "args": ["-y", "tokenos", "/absolute/path/to/backend-api"]
     }
   }
 }
 ```
-
-> **Note:** Each entry runs an isolated TokenOS server and stores its data strictly inside that project's `.tokenos/` folder. They do not conflict.
 
 ---
 
