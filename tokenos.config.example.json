@@ -1,5 +1,5 @@
 {
-  "watchPath": "/Users/wripcode_/Desktop/myLab/swiss-knife-flow",
+  "watchPath": "/absolute/path/to/your/project",
   "ollama": {
     "url": "http://localhost:11434",
     "model": "mxbai-embed-large:latest"
