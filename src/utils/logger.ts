@@ -52,10 +52,11 @@ export const logger = {
     }
     
     // Health checks
-    const ollamaStatus = params.ollamaOk ? pc.green("ok") : pc.red("offline");
-    const sqliteStatus = params.sqliteOk ? pc.green("ok") : pc.red("error");
+    if (params.ollamaOk) {
+      console.error(`  ${pc.green("➜")}  ${pc.bold("Ollama:")}   ${pc.green("ok")}${params.model ? ` ${pc.dim(`(${params.model})`)}` : ""}`);
+    }
     
-    console.error(`  ${pc.green("➜")}  ${pc.bold("Ollama:")}   ${ollamaStatus}${params.model ? ` ${pc.dim(`(${params.model})`)}` : ""}`);
+    const sqliteStatus = params.sqliteOk ? pc.green("ok") : pc.red("error");
     console.error(`  ${pc.green("➜")}  ${pc.bold("SQLite:")}   ${sqliteStatus}`);
     console.error("");
   }

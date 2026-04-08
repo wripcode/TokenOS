@@ -2,7 +2,7 @@
 
 // ───── Version flag ───────────────────────────────────────────────────────────
 if (process.argv.includes("--version")) {
-  console.log("2.0.0");
+  console.log("2.0.1");
   process.exit(0);
 }
 
@@ -39,7 +39,6 @@ async function main(): Promise<void> {
   const bootStart = Date.now();
   logger.info("tokenos", `starting — watching: ${config.watchPath}`);
   logger.info("tokenos", `database: ${config.dbPath}`);
-  logger.info("tokenos", `embedding model: ${config.ollama.model}`);
 
   // Optionally start visualization UI
   if (config.ui.enabled) {
@@ -70,6 +69,7 @@ async function main(): Promise<void> {
 
   // Back-fill embeddings non-blocking — large projects won't timeout the MCP handshake
   if (ollamaOk) {
+    logger.info("tokenos", `embedding model: ${config.ollama.model} (online)`);
     backfillEmbeddings()
       .then(({ updated, skipped }: { updated: number; skipped: number }) => {
         logger.success("tokenos", `embeddings ready: ${updated} updated, ${skipped} skipped`);
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   }
 
   logger.viteLike({
-    version: "2.0.0",
+    version: "2.0.1",
     timeMs: Date.now() - bootStart,
     localUrl: config.ui.enabled ? `http://localhost:${config.ui.port}/graph` : undefined,
     ollamaOk,
