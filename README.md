@@ -2,8 +2,11 @@
 
 [![npm version](https://img.shields.io/npm/v/tokenos.svg?style=flat-square&color=blue)](https://www.npmjs.com/package/tokenos)
 [![npm downloads](https://img.shields.io/npm/dm/tokenos.svg?style=flat-square)](https://www.npmjs.com/package/tokenos)
-[![License: MIT](https://img.shields.io/npm/l/tokenos.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/node/v/tokenos.svg?style=flat-square)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/npm/l/tokenos.svg?style=flat-square)](https://github.com/wripcode/tokenos/blob/main/LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white&style=flat-square)](https://www.typescriptlang.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-07405E?logo=sqlite&logoColor=white&style=flat-square)](https://sqlite.org)
+[![MCP](https://img.shields.io/badge/MCP-compatible-brightgreen?style=flat-square)](https://modelcontextprotocol.io)
 
 > **Local-first codebase graph intelligence for AI assistants — powered by SQLite, ts-morph, and optional Ollama.**
 
@@ -67,13 +70,13 @@ That's it. The server will:
 
 ## Commands
 
-| Command | Description |
-|---|---|
-| `npx -y tokenos .` | Index the current folder and start the MCP server |
-| `npx -y tokenos /path` | Index a specific folder and start the server |
-| `npx tokenos --version` | Print the installed version |
-| `npm run dev` | *(Cloned repo only)* Start in local development mode |
-| `npm run reset` | *(Cloned repo only)* Wipe the development database |
+| Command                 | Description                                          |
+| ----------------------- | ---------------------------------------------------- |
+| `npx -y tokenos .`      | Index the current folder and start the MCP server    |
+| `npx -y tokenos /path`  | Index a specific folder and start the server         |
+| `npx tokenos --version` | Print the installed version                          |
+| `npm run dev`           | _(Cloned repo only)_ Start in local development mode |
+| `npm run reset`         | _(Cloned repo only)_ Wipe the development database   |
 
 ---
 
@@ -86,6 +89,7 @@ Each project gets its own isolated database at:
 ```
 
 This means:
+
 - ✅ Different projects never mix data
 - ✅ You can delete `.tokenos/` to reset a specific project
 - ✅ Add `.tokenos/` to your project's `.gitignore`
@@ -96,11 +100,11 @@ SQLite is configured with **WAL mode** for better concurrent read performance an
 
 Three tables and one virtual table are created automatically:
 
-| Table | Purpose |
-|---|---|
-| `nodes` | All code entities (functions, classes, components, etc.) with metadata, summaries, embeddings, and importance scores |
-| `edges` | All relationships between nodes (CALLS, IMPORTS, RENDERS, etc.) with unique constraint on `(from_node, to_node, type)` |
-| `memories` | Conversation memory storage for persistent context across sessions |
+| Table       | Purpose                                                                                                                                        |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nodes`     | All code entities (functions, classes, components, etc.) with metadata, summaries, embeddings, and importance scores                           |
+| `edges`     | All relationships between nodes (CALLS, IMPORTS, RENDERS, etc.) with unique constraint on `(from_node, to_node, type)`                         |
+| `memories`  | Conversation memory storage for persistent context across sessions                                                                             |
 | `nodes_fts` | FTS5 virtual table — BM25 full-text index over `name`, `summary`, and `meta` fields. Kept in sync with `nodes` inside every index transaction. |
 
 ---
@@ -277,18 +281,18 @@ Args: (none)
 
 The parser extracts **10 distinct node types** from TypeScript/TSX source files:
 
-| Type | Description | Detection Method |
-|---|---|---|
-| `function` | Named functions and arrow functions | `FunctionDeclaration` and `VariableDeclaration → ArrowFunction` |
-| `component` | React/JSX components | PascalCase function that contains JSX elements |
-| `class` | ES6 class declarations | `ClassDeclaration` |
-| `interface` | TypeScript interface declarations | `InterfaceDeclaration` |
-| `type_alias` | TypeScript type aliases | `TypeAliasDeclaration` |
-| `enum` | TypeScript enum declarations | `EnumDeclaration` |
-| `variable` | Exported constants and variables | Exported `VariableStatement` (excluding arrow functions already captured) |
-| `import` | Import declarations | `ImportDeclaration` → keyed as `import:<module_specifier>` |
-| `file` | Source file entry | One per file, named after the basename |
-| `route` | Next.js App Router route | Detected from `app/**/page.tsx` file paths |
+| Type         | Description                         | Detection Method                                                          |
+| ------------ | ----------------------------------- | ------------------------------------------------------------------------- |
+| `function`   | Named functions and arrow functions | `FunctionDeclaration` and `VariableDeclaration → ArrowFunction`           |
+| `component`  | React/JSX components                | PascalCase function that contains JSX elements                            |
+| `class`      | ES6 class declarations              | `ClassDeclaration`                                                        |
+| `interface`  | TypeScript interface declarations   | `InterfaceDeclaration`                                                    |
+| `type_alias` | TypeScript type aliases             | `TypeAliasDeclaration`                                                    |
+| `enum`       | TypeScript enum declarations        | `EnumDeclaration`                                                         |
+| `variable`   | Exported constants and variables    | Exported `VariableStatement` (excluding arrow functions already captured) |
+| `import`     | Import declarations                 | `ImportDeclaration` → keyed as `import:<module_specifier>`                |
+| `file`       | Source file entry                   | One per file, named after the basename                                    |
+| `route`      | Next.js App Router route            | Detected from `app/**/page.tsx` file paths                                |
 
 ---
 
@@ -296,17 +300,17 @@ The parser extracts **10 distinct node types** from TypeScript/TSX source files:
 
 The parser extracts **10 distinct edge types** representing relationships between nodes:
 
-| Edge | Description |
-|---|---|
-| `CALLS` | Function A calls function B (via `CallExpression`) |
-| `IMPORTS` | File imports a module |
-| `EXPORTS` | File exports a symbol |
-| `EXTENDS` | Class or interface extends a base |
-| `IMPLEMENTS` | Class implements an interface |
-| `DEFINES` | File defines a symbol (function, class, variable, etc.) |
-| `RENDERS` | React component renders another component (JSX usage) |
-| `CONTAINS` | Wrapper component contains a child in JSX tree (direct parent-child) |
-| `TYPE_OF` | Symbol references a type or interface |
+| Edge          | Description                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| `CALLS`       | Function A calls function B (via `CallExpression`)                                          |
+| `IMPORTS`     | File imports a module                                                                       |
+| `EXPORTS`     | File exports a symbol                                                                       |
+| `EXTENDS`     | Class or interface extends a base                                                           |
+| `IMPLEMENTS`  | Class implements an interface                                                               |
+| `DEFINES`     | File defines a symbol (function, class, variable, etc.)                                     |
+| `RENDERS`     | React component renders another component (JSX usage)                                       |
+| `CONTAINS`    | Wrapper component contains a child in JSX tree (direct parent-child)                        |
+| `TYPE_OF`     | Symbol references a type or interface                                                       |
 | `PART_OF_TAB` | Component belongs to a tab (detected from `TabsContent`, `TabContent`, `TabPanel` wrappers) |
 
 ---
@@ -319,18 +323,18 @@ Every node is scored using a batch SQL computation:
 Score = (inDegree × 2) + outDegree + typeWeight
 ```
 
-| Type | Weight |
-|---|---|
-| `class` | 3.0 |
-| `component` | 2.5 |
-| `function` | 2.0 |
-| `route` | 1.5 |
-| `interface` | 1.5 |
-| `enum` | 1.5 |
-| `file` | 1.5 |
-| `type_alias` | 1.0 |
-| `variable` | 1.0 |
-| `import` | 0.5 |
+| Type         | Weight |
+| ------------ | ------ |
+| `class`      | 3.0    |
+| `component`  | 2.5    |
+| `function`   | 2.0    |
+| `route`      | 1.5    |
+| `interface`  | 1.5    |
+| `enum`       | 1.5    |
+| `file`       | 1.5    |
+| `type_alias` | 1.0    |
+| `variable`   | 1.0    |
+| `import`     | 0.5    |
 
 Importance is computed in a single aggregation query (no N+1), then batch-updated in a transaction.
 
@@ -344,25 +348,26 @@ The parser automatically infers rich metadata for each node:
 
 Components are assigned a UI `role` based on name/file pattern matching:
 
-| Pattern | Role |
-|---|---|
-| `*panel*` | `panel` |
-| `*tab*` | `tab` |
-| `*page*` | `page` |
-| `*dialog*`, `*modal*` | `dialog` |
-| `*form*` | `form` |
-| `*sidebar*`, `*nav*` | `navigation` |
-| `*header*` | `header` |
-| `*footer*` | `footer` |
-| `*content*` | `content` |
-| `*list*` | `list` |
-| `*card*` | `card` |
-| `*button*` | `action` |
-| `*layout*` | `layout` |
+| Pattern               | Role         |
+| --------------------- | ------------ |
+| `*panel*`             | `panel`      |
+| `*tab*`               | `tab`        |
+| `*page*`              | `page`       |
+| `*dialog*`, `*modal*` | `dialog`     |
+| `*form*`              | `form`       |
+| `*sidebar*`, `*nav*`  | `navigation` |
+| `*header*`            | `header`     |
+| `*footer*`            | `footer`     |
+| `*content*`           | `content`    |
+| `*list*`              | `list`       |
+| `*card*`              | `card`       |
+| `*button*`            | `action`     |
+| `*layout*`            | `layout`     |
 
 ### Feature Inference
 
 Features are extracted from directory structure:
+
 - **Next.js App Router**: `app/(group)/feature-name/...` → `feature: "feature-name"`
 - **Component directories**: `components/feature-name/...` → `feature: "feature-name"`
 
@@ -373,6 +378,7 @@ Next.js App Router routes are auto-detected from `app/**/page.tsx` paths and sto
 ### Tab System Detection
 
 When the parser encounters `<TabsContent value="xxx">` (or `TabContent`, `TabPanel`), it:
+
 1. Creates `PART_OF_TAB` edges from children to the parent component
 2. Sets `meta.tab = "xxx"` on the child nodes
 
@@ -400,12 +406,12 @@ Enable the built-in visualization UI by setting `ui.enabled: true` in your confi
 
 ### Routes
 
-| Route | Description |
-|---|---|
-| `/` | **Dashboard** — Glassmorphism-styled overview with stats cards, top nodes grid, and full context explorer table. Animated with GSAP. |
-| `/graph` | **Network Graph** — Interactive force-directed graph visualization using vis-network. Click nodes for details. |
-| `/api/stats` | JSON API: node counts by type + top 50 nodes |
-| `/api/graph-data` | JSON API: full graph data (auto-limited to top 1500 nodes for browser performance) |
+| Route             | Description                                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `/`               | **Dashboard** — Glassmorphism-styled overview with stats cards, top nodes grid, and full context explorer table. Animated with GSAP. |
+| `/graph`          | **Network Graph** — Interactive force-directed graph visualization using vis-network. Click nodes for details.                       |
+| `/api/stats`      | JSON API: node counts by type + top 50 nodes                                                                                         |
+| `/api/graph-data` | JSON API: full graph data (auto-limited to top 1500 nodes for browser performance)                                                   |
 
 ---
 
@@ -429,6 +435,7 @@ npm run dev
 ```
 
 Popular models:
+
 - `mxbai-embed-large:latest` — high quality, larger context
 - `nomic-embed-text` — fast, good general purpose (default fallback)
 - `all-minilm` — lightweight, fast
@@ -507,28 +514,28 @@ src/
 
 ### `tokenos.config.json`
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `watchPath` | `string` | `process.cwd()` | Absolute path to the project you want to index |
-| `ollama.url` | `string` | `http://localhost:11434` | Ollama server URL |
-| `ollama.model` | `string` | `nomic-embed-text` | Embedding model to use |
-| `ui.enabled` | `boolean` | `false` | Start visualization dashboard on boot |
-| `ui.port` | `number` | `3333` | Dashboard HTTP server port |
+| Field          | Type      | Default                  | Description                                    |
+| -------------- | --------- | ------------------------ | ---------------------------------------------- |
+| `watchPath`    | `string`  | `process.cwd()`          | Absolute path to the project you want to index |
+| `ollama.url`   | `string`  | `http://localhost:11434` | Ollama server URL                              |
+| `ollama.model` | `string`  | `nomic-embed-text`       | Embedding model to use                         |
+| `ui.enabled`   | `boolean` | `false`                  | Start visualization dashboard on boot          |
+| `ui.port`      | `number`  | `3333`                   | Dashboard HTTP server port                     |
 
 ### Environment Variable Overrides
 
-| Variable | Overrides |
-|---|---|
-| `OLLAMA_URL` | `ollama.url` |
+| Variable          | Overrides      |
+| ----------------- | -------------- |
+| `OLLAMA_URL`      | `ollama.url`   |
 | `EMBEDDING_MODEL` | `ollama.model` |
-| `GRAPH_UI_PORT` | `ui.port` |
+| `GRAPH_UI_PORT`   | `ui.port`      |
 
 ### CLI Arguments
 
-| Argument | Description |
-|---|---|
-| First non-flag arg | Overrides `watchPath` |
-| `--ui` | Enables visualization dashboard (overrides config) |
+| Argument           | Description                                        |
+| ------------------ | -------------------------------------------------- |
+| First non-flag arg | Overrides `watchPath`                              |
+| `--ui`             | Enables visualization dashboard (overrides config) |
 
 **Precedence**: CLI args → config file → environment variables → defaults
 
@@ -536,11 +543,11 @@ src/
 
 ## Prerequisites
 
-| Dependency | Purpose |
-|---|---|
-| Node.js ≥ 18 | Runtime |
-| `npm` | Package manager |
-| [Ollama](https://ollama.ai/) *(optional)* | Semantic embedding generation |
+| Dependency                                | Purpose                       |
+| ----------------------------------------- | ----------------------------- |
+| Node.js ≥ 18                              | Runtime                       |
+| `npm`                                     | Package manager               |
+| [Ollama](https://ollama.ai/) _(optional)_ | Semantic embedding generation |
 
 If Ollama is not running, the server starts normally — semantic search falls back to text-mode and embeddings are skipped.
 
@@ -549,32 +556,33 @@ If Ollama is not running, the server starts normally — semantic search falls b
 ## Tech Stack
 
 **Core Technologies:**
+
 - **[TypeScript](https://www.typescriptlang.org/) / [Node.js](https://nodejs.org/)** — Core language and runtime (ES2022 target, Node16 module resolution)
 - **[SQLite](https://sqlite.org/)** — Local, fast, embedded graph database (WAL mode)
 - **[ts-morph](https://ts-morph.com/)** — TypeScript AST parsing tool for static analysis
 - **[Model Context Protocol (MCP)](https://modelcontextprotocol.io/)** — Standardized AI tool integration protocol
-- **[Ollama](https://ollama.com/)** — Local semantic vector embeddings *(optional)*
+- **[Ollama](https://ollama.com/)** — Local semantic vector embeddings _(optional)_
 
 ### Dependencies
 
-| Package | Version | Role |
-|---|---|---|
-| `@modelcontextprotocol/sdk` | ^1.8.0 | MCP server + stdio transport |
-| `better-sqlite3` | ^11.9.1 | Synchronous SQLite (Node.js) |
-| `ts-morph` | ^25.0.1 | TypeScript AST parsing |
-| `chokidar` | ^4.0.3 | File watching |
-| `ignore` | ^7.0.5 | `.gitignore`-pattern matching |
-| `zod` | ^4.3.6 | Schema validation for MCP tool inputs |
-| `picocolors` | ^1.1.1 | Terminal colors |
+| Package                     | Version | Role                                  |
+| --------------------------- | ------- | ------------------------------------- |
+| `@modelcontextprotocol/sdk` | ^1.8.0  | MCP server + stdio transport          |
+| `better-sqlite3`            | ^11.9.1 | Synchronous SQLite (Node.js)          |
+| `ts-morph`                  | ^25.0.1 | TypeScript AST parsing                |
+| `chokidar`                  | ^4.0.3  | File watching                         |
+| `ignore`                    | ^7.0.5  | `.gitignore`-pattern matching         |
+| `zod`                       | ^4.3.6  | Schema validation for MCP tool inputs |
+| `picocolors`                | ^1.1.1  | Terminal colors                       |
 
 ### Dev Dependencies
 
-| Package | Version | Role |
-|---|---|---|
-| `@types/better-sqlite3` | ^7.6.12 | SQLite type definitions |
-| `@types/node` | ^22.13.13 | Node.js type definitions |
-| `tsx` | ^4.19.3 | TypeScript dev runner |
-| `typescript` | ^5.8.2 | TypeScript compiler |
+| Package                 | Version   | Role                     |
+| ----------------------- | --------- | ------------------------ |
+| `@types/better-sqlite3` | ^7.6.12   | SQLite type definitions  |
+| `@types/node`           | ^22.13.13 | Node.js type definitions |
+| `tsx`                   | ^4.19.3   | TypeScript dev runner    |
+| `typescript`            | ^5.8.2    | TypeScript compiler      |
 
 ---
 
