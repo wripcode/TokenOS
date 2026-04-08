@@ -11,6 +11,7 @@ import {
   deleteEdgesByFile,
   getNode,
   upsertMemory,
+  ftsUpsertNode,
 } from "../db/index.js";
 import type { ParsedNode, ConversationMemory } from "../types.js";
 import { readFile } from "fs/promises";
@@ -41,6 +42,7 @@ export async function indexFile(filePath: string): Promise<{ nodes: number; edge
 
     for (const node of nodes) {
       upsertNode(node as ParsedNode & { importance: number });
+      ftsUpsertNode(node); // sync FTS inside same transaction — atomic with graph
     }
 
     for (const edge of edges) {

@@ -79,3 +79,18 @@ try {
 } catch {
   // Already exists — ignore
 }
+
+// FTS5 full-text search index (non-content table — synced manually in upsertNode/deleteNodesByFile)
+// Using non-content approach: no auto-sync issues, small storage overhead (text fields only)
+try {
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
+      node_id UNINDEXED,
+      name,
+      summary,
+      meta
+    );
+  `);
+} catch {
+  // FTS5 not available or table already exists — ignore, text search still works
+}

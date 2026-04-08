@@ -4,13 +4,15 @@ import { z } from "zod";
 import {
   getNode,
   getNodesByName,
-  getNodesByNameAndType,
-  getNodesWithEmbeddings,
   getNeighbors,
+  getNodesWithEmbeddings,
   getConnectedNodes,
   getTopNodes,
   searchNodesExtended,
   searchMemories,
+  getNodesByNameAndTypeExtended,
+  searchNodesByTerms,
+  ftsSearch,
 } from "../db/index.js";
 import { generateEmbedding, rankBySimilarity } from "../embeddings/index.js";
 import { logger } from "../utils/logger.js";
@@ -38,6 +40,7 @@ function buildSubgraph(
   options?: { edgeTypes?: string[]; nodeTypes?: string[] }
 ): { nodes: GraphNode[]; edges: unknown[] } {
   const visitedNodes = new Map<string, GraphNode>();
+  const visitedEdgeKeys = new Set<string>();
   const visitedEdges: unknown[] = [];
   const queue: Array<{ id: string; depth: number }> = [{ id: startId, depth: 0 }];
 
@@ -57,7 +60,12 @@ function buildSubgraph(
         if (options?.edgeTypes && options.edgeTypes.length > 0 && !options.edgeTypes.includes(edge.type)) {
           continue;
         }
-        visitedEdges.push(edge);
+        // Deduplicate edges at traversal time — fixes explore + search in one place
+        const edgeKey = `${edge.from_node}|${edge.to_node}|${edge.type}`;
+        if (!visitedEdgeKeys.has(edgeKey)) {
+          visitedEdgeKeys.add(edgeKey);
+          visitedEdges.push(edge);
+        }
         const nextId = edge.from_node === item.id ? edge.to_node : edge.from_node;
         if (!visitedNodes.has(nextId)) {
           queue.push({ id: nextId, depth: item.depth + 1 });
@@ -70,33 +78,36 @@ function buildSubgraph(
 }
 
 function compressNode(node: GraphNode, options?: { includeCode?: boolean; includeSummary?: boolean; includeEmbedding?: boolean }) {
-  let metaObj = undefined;
+  let metaObj: Record<string, unknown> | undefined;
   if (node.meta) {
     try {
       metaObj = typeof node.meta === 'string' ? JSON.parse(node.meta) : node.meta;
     } catch {}
   }
-  
+
   const includeCode = options?.includeCode ?? false;
   const includeSummary = options?.includeSummary ?? true;
   const includeEmbedding = options?.includeEmbedding ?? false;
 
-  return {
+  // Strip null/empty fields — reduces payload ~15-20% and stays under MCP client inline threshold
+  const result: Record<string, unknown> = {
     id: node.id,
     name: node.name,
     type: node.type,
-    ...(includeSummary ? { summary: node.summary } : {}),
-    importance: node.importance,
-    meta: metaObj,
-    ...(includeCode ? { code_snippet: node.code_snippet } : {}),
-    ...(includeEmbedding && node.embedding ? { embedding: node.embedding } : {}),
   };
+  if (includeSummary && node.summary) result.summary = node.summary;
+  if (node.importance) result.importance = node.importance;
+  if (metaObj && Object.keys(metaObj).length > 0) result.meta = metaObj;
+  if (includeCode && node.code_snippet) result.code_snippet = node.code_snippet;
+  if (includeEmbedding && node.embedding) result.embedding = node.embedding;
+  return result;
 }
 
 function compressGraph(graph: { nodes: GraphNode[]; edges: any[] }, options?: { includeCode?: boolean; includeSummary?: boolean; includeEmbedding?: boolean }) {
   return {
     nodes: graph.nodes.map(n => compressNode(n, options)),
-    edges: graph.edges,
+    // Strip autoincrement edge id — adds no value for AI agents and inflates payload
+    edges: graph.edges.map((e: any) => ({ from: e.from_node, to: e.to_node, type: e.type })),
   };
 }
 
@@ -114,7 +125,7 @@ const NodeIdSchema = z
 // ───── Server factory ─────────────────────────────────────────────────────────
 
 export function createServer(): McpServer {
-  const server = new McpServer({ name: "tokenos-server", version: "1.1.0" });
+  const server = new McpServer({ name: "tokenos-server", version: "1.2.0" });
 
   // ── search ─────────────────────────────────────────────────────────────────
   server.registerTool(
@@ -148,17 +159,48 @@ Returns:
       }
 
       // 2. Hybrid Search
-      const textResults = searchNodesExtended(query);
+      // ftsSearch called once — result reused for both textResults and the Ollama-offline branch
+      const ftsResults = ftsSearch(query);
+      const textResults = (ftsResults.length > 0 ? ftsResults : searchNodesExtended(query))
+        .filter(n => n.type !== "import"); // import nodes are noise in intent-based queries
+
       const semanticVec = await generateEmbedding(query);
+      const semanticAvailable = semanticVec !== null;
       let semanticResults: SearchResult[] = [];
+
       if (semanticVec) {
         const candidates = getNodesWithEmbeddings();
         semanticResults = rankBySimilarity(semanticVec, candidates, 10);
+      } else {
+        // Ollama offline — reuse cached ftsResults (no second call)
+        if (ftsResults.length > 0) {
+          semanticResults = ftsResults.slice(0, 10);
+        } else {
+          // Final fallback: multi-term LIKE with stop-word filter
+          const STOP_WORDS = new Set(["the", "and", "for", "with", "that", "this", "from", "are", "was", "has", "have"]);
+          const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 3 && !STOP_WORDS.has(t));
+          if (terms.length > 0) {
+            const termResults: SearchResult[] = [];
+            for (const term of terms.slice(0, 5)) {
+              termResults.push(...searchNodesExtended(term));
+            }
+            const countMap = new Map<string, { node: SearchResult; count: number }>();
+            for (const r of termResults) {
+              const existing = countMap.get(r.id);
+              if (existing) existing.count++;
+              else countMap.set(r.id, { node: r, count: 1 });
+            }
+            semanticResults = Array.from(countMap.values())
+              .sort((a, b) => b.count - a.count || b.node.importance - a.node.importance)
+              .slice(0, 10)
+              .map(e => e.node);
+          }
+        }
       }
-      
+
       const combined = [...textResults.slice(0, 10), ...semanticResults.slice(0, 5)];
       const uniqueIds = Array.from(new Set(combined.map(n => n.id)));
-      
+
       // 3. Expand Graph
       const depth = mode === "trace" ? 2 : 1;
       const finalGraph = { nodes: [] as GraphNode[], edges: [] as unknown[] };
@@ -166,9 +208,9 @@ Returns:
       if (mode === "dependency") {
         options.edgeTypes = ["IMPORTS", "EXPORTS"];
       }
-      
+
       const seen = new Set<string>();
-      
+
       for (const id of uniqueIds.slice(0, 5)) {
         if (seen.has(id)) continue;
         const sub = buildSubgraph(id, depth, options);
@@ -180,24 +222,15 @@ Returns:
         }
         finalGraph.edges.push(...sub.edges);
       }
-      
-      // De-duplicate edges
-      const edgeSet = new Set<string>();
-      const uniqueEdges = [];
-      for (const e of finalGraph.edges as any[]) {
-        const key = `${e.from_node}|${e.to_node}|${e.type}`;
-        if (!edgeSet.has(key)) {
-          edgeSet.add(key);
-          uniqueEdges.push(e);
-        }
-      }
-      finalGraph.edges = uniqueEdges;
 
-      // 4. Memory Retreival
+      // buildSubgraph already deduplicates edges internally
+
+      // 4. Memory Retrieval
       const memories = searchMemories(query).slice(0, 3);
 
       const output = {
         mode,
+        semantic_available: semanticAvailable,
         graph: compressGraph(finalGraph),
         memories: memories.map(m => ({
           id: m.id,
@@ -212,7 +245,7 @@ Returns:
       if (response_format === "markdown") {
         text = [
           `# Cognitive Search: "${query}"`,
-          `Detected Mode: **${mode}**`,
+          `Detected Mode: **${mode}** | Semantic: **${semanticAvailable ? 'yes' : 'no (FTS5/text fallback)'}**`,
           "",
           `## Codebase Context (${output.graph.nodes.length} nodes)`,
           ...output.graph.nodes.map(n => `- **${n.name}** (${n.type})\n  ${n.summary || ""}`),
@@ -277,6 +310,7 @@ Returns:
     async ({ query, type, mode, limit, offset, response_format }) => {
       try {
         let allResults: SearchResult[];
+        let semanticAvailable: boolean | undefined;
 
         if (mode === "semantic") {
           const queryVec = await generateEmbedding(query);
@@ -284,30 +318,52 @@ Returns:
             // Only load nodes that have embeddings (+ optional type filter at SQL level)
             const candidates = getNodesWithEmbeddings(type);
             allResults = rankBySimilarity(queryVec, candidates, limit + offset);
+            semanticAvailable = true;
           } else {
-            logger.warn("tokenos", "Ollama unavailable, falling back to text search");
-            allResults = getNodesByName(query).map((n) => ({ ...n, similarity: undefined }));
+            logger.warn("tokenos", "Ollama unavailable, falling back to FTS5/text search");
+            semanticAvailable = false;
+            // FTS5 → multi-term → single-term fallback chain
+            const ftsResults = ftsSearch(query);
+            const terms = query.split(/\s+/).filter(t => t.length > 1);
+            allResults = (ftsResults.length > 0
+              ? ftsResults
+              : terms.length > 1
+                ? searchNodesByTerms(terms, type)
+                : type
+                  ? getNodesByNameAndTypeExtended(query, type)
+                  : searchNodesExtended(query)
+            ).map(n => ({ ...n, similarity: undefined }));
           }
         } else {
-          // Text search: AND filter when type provided, extended meta search otherwise
-          const results = type
-            ? getNodesByNameAndType(query, type)
-            : searchNodesExtended(query);
+          // Text mode: FTS5 → multi-term → single-term
+          const terms = query.split(/\s+/).filter(t => t.length > 1);
+          let results: GraphNode[];
+          if (terms.length > 1) {
+            const ftsResults = ftsSearch(query);
+            results = ftsResults.length > 0
+              ? ftsResults
+              : searchNodesByTerms(terms, type);
+          } else {
+            results = type
+              ? getNodesByNameAndTypeExtended(query, type)
+              : searchNodesExtended(query);
+          }
           allResults = results
             .sort((a, b) => b.importance - a.importance)
-            .map((n) => ({ ...n, similarity: undefined }));
+            .map(n => ({ ...n, similarity: undefined }));
         }
 
         const total = allResults.length;
         const page = allResults.slice(offset, offset + limit);
         const hasMore = offset + page.length < total;
 
-        const output = {
+        const output: Record<string, unknown> = {
           total,
           count: page.length,
           offset,
           has_more: hasMore,
           ...(hasMore ? { next_offset: offset + page.length } : {}),
+          ...(semanticAvailable !== undefined ? { semantic_available: semanticAvailable } : {}),
           nodes: page.map(n => compressNode(n)),
         };
 
@@ -397,6 +453,22 @@ Returns:
             },
           ],
         };
+      }
+
+      // For file nodes: synthesize a barrel-style export list from DEFINES graph edges
+      // Pure graph traversal — no file I/O, no re-parsing
+      if (node.type === "file" && !node.code_snippet) {
+        const edges = getNeighbors(node.id);
+        const exportLines = edges
+          .filter(e => e.type === "DEFINES" && e.from_node === node.id)
+          .map(e => {
+            const exportNode = getNode(e.to_node);
+            return exportNode ? `export ${exportNode.type} ${exportNode.name}` : null;
+          })
+          .filter((l): l is string => l !== null);
+        if (exportLines.length > 0) {
+          node.code_snippet = exportLines.join("\n");
+        }
       }
 
       const compressedNode = compressNode(node, { includeCode: true });

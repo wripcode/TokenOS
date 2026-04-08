@@ -65,6 +65,38 @@ export function getNodesByNameAndType(name: string, type: string): GraphNode[] {
   return stmtGetNodesByNameAndType.all(`%${name}%`, type);
 }
 
+// Extended type+text search: matches name, summary, AND raw meta JSON with a type filter
+// IMPORTANT: type = ? is the first positional param — pass (type, term, term, term)
+const stmtGetNodesByNameAndTypeExtended = db.prepare<[string, string, string, string], GraphNode>(`
+  SELECT * FROM nodes
+  WHERE type = ?
+    AND (name LIKE ? OR summary LIKE ? OR meta LIKE ?)
+  ORDER BY importance DESC
+`);
+
+export function getNodesByNameAndTypeExtended(query: string, type: string): GraphNode[] {
+  const term = `%${query}%`;
+  return stmtGetNodesByNameAndTypeExtended.all(type, term, term, term);
+}
+
+// Multi-term search: splits query into tokens, searches each, dedupes by id
+export function searchNodesByTerms(terms: string[], type?: string): GraphNode[] {
+  const seen = new Set<string>();
+  const results: GraphNode[] = [];
+  for (const term of terms) {
+    const matches = type
+      ? getNodesByNameAndTypeExtended(term, type)
+      : searchNodesExtended(term);
+    for (const m of matches) {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        results.push(m);
+      }
+    }
+  }
+  return results.sort((a, b) => b.importance - a.importance);
+}
+
 // ── Nodes with embeddings (for semantic search — avoids loading ALL nodes) ────
 
 const stmtGetNodesWithEmbeddings = db.prepare<[], GraphNode>(`
@@ -84,7 +116,22 @@ const stmtDeleteNodesByFile = db.prepare<[string]>(`
   DELETE FROM nodes WHERE file_path = ?
 `);
 
+// FTS delete — must run BEFORE stmtDeleteNodesByFile while node rows still exist
+// The subquery `SELECT id FROM nodes WHERE file_path = ?` depends on nodes being present
+const stmtFtsDeleteByFile = db.prepare<[string]>(`
+  DELETE FROM nodes_fts WHERE node_id IN (SELECT id FROM nodes WHERE file_path = ?)
+`);
+
+export function ftsDeleteByFile(filePath: string): void {
+  try {
+    stmtFtsDeleteByFile.run(filePath);
+  } catch {
+    // FTS table may not exist on older DBs — safe to ignore
+  }
+}
+
 export function deleteNodesByFile(filePath: string): void {
+  ftsDeleteByFile(filePath); // Must run first: uses SELECT from nodes to resolve ids
   stmtDeleteNodesByFile.run(filePath);
 }
 
@@ -266,9 +313,11 @@ export function getNodesByMeta(
 
 // ── Combined name + meta search (searches name LIKE query OR meta contains query) ─
 
-const stmtSearchNameOrMeta = db.prepare<[string, string, string, string], GraphNode>(`
+// Five params: name LIKE, summary LIKE, meta.role =, meta.tab =, meta.feature =
+const stmtSearchNameOrMeta = db.prepare<[string, string, string, string, string], GraphNode>(`
   SELECT * FROM nodes
   WHERE name LIKE ?
+     OR summary LIKE ?
      OR json_extract(meta, '$.role') = ?
      OR json_extract(meta, '$.tab') = ?
      OR json_extract(meta, '$.feature') = ?
@@ -276,5 +325,52 @@ const stmtSearchNameOrMeta = db.prepare<[string, string, string, string], GraphN
 `);
 
 export function searchNodesExtended(query: string): GraphNode[] {
-  return stmtSearchNameOrMeta.all(`%${query}%`, query, query, query);
+  return stmtSearchNameOrMeta.all(`%${query}%`, `%${query}%`, query, query, query);
+}
+
+// ── FTS5 helpers ─────────────────────────────────────────────────────────────
+//
+// Non-content FTS5 table — synced manually inside the indexer transaction.
+// ftsUpsertNode is called after each upsertNode inside insertBatch().
+
+const stmtFtsUpsert = db.prepare<[string, string, string, string]>(`
+  INSERT OR REPLACE INTO nodes_fts(node_id, name, summary, meta)
+  VALUES (?, ?, ?, ?)
+`);
+
+export function ftsUpsertNode(node: { id: string; name: string; summary?: string | null; meta?: string | null }): void {
+  try {
+    stmtFtsUpsert.run(node.id, node.name, node.summary ?? "", node.meta ?? "");
+  } catch {
+    // FTS table may not exist on older DBs — safe to ignore
+  }
+}
+
+const stmtFtsSearch = db.prepare<[string], { node_id: string }>(`
+  SELECT node_id FROM nodes_fts WHERE nodes_fts MATCH ? ORDER BY rank LIMIT 30
+`);
+
+const FTS_STOP_WORDS = new Set([
+  "the", "and", "for", "with", "that", "this", "from", "are", "was", "has", "have",
+]);
+
+export function ftsSearch(query: string): GraphNode[] {
+  const terms = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(t => t.length > 2 && !FTS_STOP_WORDS.has(t));
+
+  if (terms.length === 0) return [];
+
+  // Wrap each term in quotes so FTS5 treats it as a phrase token, not a boolean operator
+  const ftsQuery = terms.map(t => `"${t}"`).join(" OR ");
+  try {
+    const rows = stmtFtsSearch.all(ftsQuery);
+    return rows.flatMap(row => {
+      const node = getNode(row.node_id);
+      return node ? [node] : [];
+    });
+  } catch {
+    return []; // FTS table unavailable — caller falls back to LIKE
+  }
 }

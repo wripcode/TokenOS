@@ -3,7 +3,8 @@ dist/
 *.db
 *.db-journal
 .env
-dev-data/
-.agents
-.vscode.DS_Store
+.vscode
+.DS_Store
 tokenos.config.json
+dev-data/
+.agents/

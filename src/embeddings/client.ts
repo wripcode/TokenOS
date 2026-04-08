@@ -6,15 +6,25 @@ import { logger } from "../utils/logger.js";
 const embeddingCache = new LRUCache<string, number[]>(1000, 30 * 60 * 1000); // 30min TTL
 
 let ollamaAvailable: boolean | null = null;
+let lastOllamaCheck = 0;
+const OLLAMA_CHECK_COOLDOWN_MS = 60_000;
 
 export async function checkOllama(): Promise<boolean> {
-  if (ollamaAvailable !== null) return ollamaAvailable;
+  const now = Date.now();
+  // Skip if: already confirmed available, or was down but hasn't hit the cooldown yet
+  if (
+    ollamaAvailable !== null &&
+    (ollamaAvailable || now - lastOllamaCheck < OLLAMA_CHECK_COOLDOWN_MS)
+  ) {
+    return ollamaAvailable;
+  }
   try {
     const res = await fetch(`${config.ollama.url}/api/tags`, { signal: AbortSignal.timeout(2000) });
     ollamaAvailable = res.ok;
   } catch {
     ollamaAvailable = false;
   }
+  lastOllamaCheck = now;
   return ollamaAvailable;
 }
 

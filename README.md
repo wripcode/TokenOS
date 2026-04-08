@@ -1,12 +1,17 @@
 # TokenOS
 
-[![npm version](https://badge.fury.io/js/tokenos.svg)](https://badge.fury.io/js/tokenos)
+[![npm version](https://img.shields.io/npm/v/tokenos.svg?style=flat-square&color=blue)](https://www.npmjs.com/package/tokenos)
+[![npm downloads](https://img.shields.io/npm/dm/tokenos.svg?style=flat-square)](https://www.npmjs.com/package/tokenos)
+[![License: MIT](https://img.shields.io/npm/l/tokenos.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white&style=flat-square)](https://www.typescriptlang.org/)
 
-> **Local-first codebase graph intelligence for AI assistants — powered by SQLite, ts-morph, and Ollama.**
+> **Local-first codebase graph intelligence for AI assistants — powered by SQLite, ts-morph, and optional Ollama.**
 
-`TokenOS` is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that statically analyses your TypeScript/TSX codebase, stores it as a structural dependency graph in SQLite, optionally enriches nodes with semantic embeddings via Ollama, and exposes high-precision query tools for AI coding assistants like Claude, Cursor, or any MCP-compatible client.
+`TokenOS` is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that statically analyses your TypeScript/TSX codebase, stores it as a structural dependency graph in SQLite, enriches nodes with **BM25 full-text search via SQLite FTS5**, optionally adds semantic embeddings via Ollama, and exposes high-precision query tools for AI coding assistants like Claude, Cursor, or any MCP-compatible client.
 
 **The goal**: When you start a new chat, the AI already knows your codebase structure. No more "let me analyze all files first" — it queries the graph and gets exactly what it needs, saving tokens and compute.
+
+> **Works fully offline.** FTS5 full-text search is built into SQLite — no Ollama, no internet, no external services required. Ollama adds optional semantic (concept-level) search on top.
 
 ---
 
@@ -89,13 +94,14 @@ SQLite is configured with **WAL mode** for better concurrent read performance an
 
 ### Schema
 
-Three tables are created automatically:
+Three tables and one virtual table are created automatically:
 
 | Table | Purpose |
 |---|---|
 | `nodes` | All code entities (functions, classes, components, etc.) with metadata, summaries, embeddings, and importance scores |
 | `edges` | All relationships between nodes (CALLS, IMPORTS, RENDERS, etc.) with unique constraint on `(from_node, to_node, type)` |
 | `memories` | Conversation memory storage for persistent context across sessions |
+| `nodes_fts` | FTS5 virtual table — BM25 full-text index over `name`, `summary`, and `meta` fields. Kept in sync with `nodes` inside every index transaction. |
 
 ---
 
@@ -170,9 +176,13 @@ Args:
    - `trace` — triggered by "trace", "flow", "how", "why" → deeper BFS traversal (depth 2)
    - `explore` — triggered by "where", "what", "find" → broad shallow search
    - `dependency` — triggered by "depend", "import", "export" → import/export edges only
-2. **Hybrid search** — Combines text name/meta matching with Ollama semantic similarity
+2. **Hybrid search** — Tries FTS5 BM25 first, then Ollama semantic similarity if available, then multi-term text fallback
 3. **Graph expansion** — BFS-expands top results into a contextualized subgraph
 4. **Memory retrieval** — Appends relevant conversation memories (top 3)
+
+**Response includes `semantic_available: true/false`** so you always know which search layer was used.
+
+**Without Ollama:** FTS5 handles all queries automatically. Searches like `"attribute listing display"` correctly return attribute-related nodes via BM25 term matching — no stale results.
 
 **Returns:** Compressed, relevant context (code + relationships + memory)
 
@@ -190,9 +200,13 @@ Args:
   response_format (optional) — 'json' (default) or 'markdown'
 ```
 
-**Text mode**: Searches by name (LIKE match) and meta fields (role, tab, feature). When `type` is provided, results are filtered with AND logic.
+**Text mode**: Uses FTS5 BM25 ranking for multi-word queries, falling back to LIKE matching for single-word exact searches. Matches across `name`, `summary`, and `meta` fields. When `type` is provided, results are filtered with AND logic.
 
-**Semantic mode**: Uses Ollama embeddings for concept-level search. Example: searching "authentication handler" finds `loginUser()` even if "auth" isn't in the name. Falls back to text mode when Ollama is offline.
+**Semantic mode**: Uses Ollama embeddings for concept-level search. Example: searching `"authentication handler"` finds `loginUser()` even if "auth" isn't in the name.
+
+**Without Ollama (semantic mode fallback)**: Automatically falls back to FTS5 → multi-term → single-term chain — no error, no empty results.
+
+**Response includes `semantic_available: true/false`** in semantic mode so you know if Ollama was actually used.
 
 **Returns:** List of matching nodes with relevance ranking
 
@@ -444,7 +458,7 @@ src/
 │   └── index.ts            # backfillEmbeddings() + re-exports
 │
 ├── server/
-│   ├── server.ts           # MCP server — registers 6 tools, BFS subgraph builder, node compression
+│   ├── server.ts           # MCP server — registers 6 tools, BFS subgraph builder, node/edge compression
 │   ├── visualize.ts        # Optional visualization dashboard (HTTP server, vis-network + GSAP)
 │   └── index.ts            # Re-exports
 │
@@ -554,12 +568,12 @@ If Ollama is not running, the server starts normally — semantic search falls b
 ## Limitations
 
 - Only `.ts` and `.tsx` files are indexed (no `.js`, `.jsx`, `.vue`, etc.)
-- Semantic search requires Ollama to be running locally
-- The graph database is rebuilt on first run per project
-- Subgraph BFS and cognitive search responses are truncated at 25,000 characters
+- The graph database is rebuilt on first run per project (or when you run `tokenos reset`)
+- Subgraph BFS and search responses are truncated at 25,000 characters
 - Cross-file edges to un-indexed targets are gracefully skipped (resolved when the dependency is indexed later)
 - Memory file extraction uses basic regex parsing (headings, bullet points, tag patterns)
 - Visualization dashboard loads at most 1,500 nodes to prevent browser rendering issues
+- Semantic (concept-level) search requires Ollama — all other search modes (FTS5, text) work fully offline
 
 ---
 

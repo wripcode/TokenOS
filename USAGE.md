@@ -4,6 +4,8 @@
 >
 > **Solution**: TokenOS pre-indexes your codebase into a structured graph. The AI queries the graph to get exactly the context it needs in 1–2 tool calls instead of scanning every file.
 
+> **Works fully offline.** FTS5 full-text search is built into SQLite (zero external dependencies). Ollama is optional — it adds concept-level semantic search on top of FTS5, but is never required.
+
 ---
 
 ## Table of Contents
@@ -230,22 +232,30 @@ Returns the most architecturally significant nodes. This gives the AI a mental m
 
 **When**: Looking for specific functions, classes, or concepts.
 
-**Text mode** (fast, name-based):
+**Text mode** (fast, works offline — no Ollama needed):
 ```
 find_nodes { query: "auth", type: "function" }
 ```
-Finds functions with "auth" in the name. Use `type` to narrow results.
+For single-word queries: LIKE match on name, summary, and meta fields.
+
+For multi-word queries: FTS5 BM25 ranking — `"sidebar collapse toggle"` correctly finds sidebar-related nodes even if no single node name contains all three words.
 
 **Semantic mode** (concept-based, requires Ollama):
 ```
 find_nodes { query: "user authentication handler", mode: "semantic" }
 ```
-Finds code related to the concept even if the name doesn't match. E.g., `loginUser()` matches "authentication handler".
+Finds code related to the concept even if the name doesn't match. E.g., `loginUser()` matches `"authentication handler"`.
+
+**Without Ollama (semantic mode fallback):**
+```
+find_nodes { query: "user authentication handler", mode: "semantic" }
+```
+Automatically falls back to FTS5 → multi-term → single-term — no error thrown, no empty results. Response includes `semantic_available: false` so you know Ollama wasn't used.
 
 | Param | Default | Description |
 |-------|---------|-------------|
 | `query` | required | Search term or description |
-| `type` | all | `function`, `class`, `file`, `import`, `variable` |
+| `type` | all | `function`, `class`, `component`, `interface`, `type_alias`, `enum`, `route`, `file`, `variable` |
 | `mode` | text | `text` or `semantic` |
 | `limit` | 10 | Results per page (1–50) |
 | `offset` | 0 | For pagination |
@@ -305,7 +315,9 @@ Returns a BFS traversal — all nodes and edges reachable within `depth` hops. U
 search { query: "how does the auth flow work?", response_format: "markdown" }
 ```
 
-Automatically detects intent, runs hybrid search, expands the graph, and includes relevant memories. Best for complex or exploratory queries.
+Automatically detects intent, runs hybrid search (FTS5 → Ollama → fallback), expands the graph, and includes relevant memories.
+
+Response always includes `semantic_available: true/false` — `false` means FTS5/text search was used (Ollama offline or not configured). Results are still accurate either way.
 
 ---
 
@@ -315,8 +327,8 @@ Automatically detects intent, runs hybrid search, expands the graph, and include
 
 - **Start every new chat with `top_nodes`** — gives the AI instant context
 - **Use `type` filters** — `find_nodes { query: "auth", type: "function" }` returns only functions, not imports
-- **Use semantic search for vague queries** — "error handling" finds `catchApiError()`, `handleException()`, etc.
-- **Use `get_connections` before reading files** — often the edge list is enough to understand relationships
+- **Use semantic mode for vague queries** — `"error handling"` finds `catchApiError()`, `handleException()`, etc. Without Ollama, FTS5 handles this automatically
+- **Check `semantic_available` in responses** — `false` means Ollama was offline; FTS5 results are still accurate but not concept-aware
 - **Use `response_format: "markdown"`** — more compact for AI consumption
 
 ### DON'T ❌
@@ -401,12 +413,12 @@ Edit `tokenos.config.json`:
 
 - Start Ollama: `ollama serve`
 - Pull the model: `ollama pull mxbai-embed-large:latest`
-- Semantic search falls back to text mode when Ollama is offline — everything else still works
+- **This is fine.** FTS5 handles all text and intent queries automatically without Ollama. Only concept-level semantic search (e.g. finding `loginUser` when searching `"authentication handler"`) requires Ollama.
 
-### "Semantic search returns no results"
+### "search returns unrelated results" or "find_nodes returns 0"
 
-- Make sure embeddings were generated (check the boot log for "embeddings ready: X updated")
-- If you changed the model, run `npm run reset` and re-index
+- **If upgrading from v1.1.x:** Run `tokenos reset` (or delete `<your-project>/.tokenos/graph.db`) then restart. The FTS5 index is built on first index run — existing databases don't have it until reset.
+- After reset, re-index: restart the MCP server (it indexes on boot) or run `npm run dev`.
 
 ### Stale data after refactoring
 
