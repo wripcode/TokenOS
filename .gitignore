@@ -8,3 +8,4 @@ dist/
 tokenos.config.json
 dev-data/
 .agents/
+test-fixtures/
