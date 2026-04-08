@@ -9,3 +9,4 @@ tokenos.config.json
 dev-data/
 .agents/
 test-fixtures/
+.tokenos/*.pid

@@ -5,6 +5,7 @@ src/
 .env
 .env.*
 *.log
+*.pid
 tsconfig.json
 .github/
 dev-data/

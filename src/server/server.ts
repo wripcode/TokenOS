@@ -127,7 +127,7 @@ const NodeIdSchema = z
 // ───── Server factory ─────────────────────────────────────────────────────────
 
 export function createServer(): McpServer {
-  const server = new McpServer({ name: "tokenos-server", version: "1.2.0" });
+  const server = new McpServer({ name: "tokenos-server", version: "2.1.0" });
 
   // ── search ─────────────────────────────────────────────────────────────────
   server.registerTool(
@@ -277,7 +277,7 @@ Args:
   - query (string): Function name, class name, or a natural-language description
   - type: Optional filter — 'function' | 'class' | 'file' | 'import' | 'variable' | 'component' | 'interface' | 'type_alias' | 'enum' | 'route'
   - mode: 'text' (default) or 'semantic' (Ollama embedding search)
-  - limit (1–50, default 10): Max results per page
+  - limit (1-50, default 10): Max results per page
   - offset (default 0): Results to skip for pagination
   - response_format: 'json' (default) or 'markdown'
 
@@ -507,7 +507,7 @@ Returns:
 Args:
   - id (string): Node ID to find connections for
   - include_reverse (boolean, default false): Include nodes that USE this node (callers, importers). Off by default — hub nodes can have hundreds of callers.
-  - limit (integer, default 50): Max connected nodes to return (1–100)
+  - limit (integer, default 50): Max connected nodes to return (1-100)
   - response_format: 'json' (default) or 'markdown'
 
 Returns:
@@ -594,7 +594,7 @@ Returns:
 
 Args:
   - id (string): Starting node ID
-  - depth (1–3, default 2): Max traversal depth
+  - depth (1-3, default 2): Max traversal depth
   - include_imports (boolean, default true): Include import nodes in traversal. Set false to reduce noise.
 
 Returns:
@@ -607,7 +607,7 @@ Returns:
           .min(1)
           .max(3)
           .default(2)
-          .describe("Max traversal depth (1–3, default 2)"),
+          .describe("Max traversal depth (1-3, default 2)"),
         include_imports: z
           .boolean()
           .default(true)
@@ -672,7 +672,7 @@ Returns:
       })();
 
       const output = {
-        version: "2.0.0",
+        version: "2.1.0",
         nodes: nodeCount,
         edges: edgeCount,
         embeddings: embeddingCount,
@@ -701,7 +701,7 @@ Returns:
       description: `Get the most important parts of the codebase.
 
 Args:
-  - limit (1–100, default 20): Max nodes to return
+  - limit (1-100, default 20): Max nodes to return
   - response_format: 'json' (default) or 'markdown'
 
 Returns:

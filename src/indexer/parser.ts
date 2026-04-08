@@ -1,5 +1,6 @@
 import { Project, SyntaxKind, Node } from "ts-morph";
 import { createHash } from "crypto";
+import { existsSync } from "fs";
 import { basename, relative } from "path";
 import type { ParsedNode, ParsedEdge, NodeType } from "../types.js";
 
@@ -548,9 +549,16 @@ function getJsxAttributeValue(
   return undefined;
 }
 
+let removeCount = 0;
+
 export function removeFile(filePath: string): void {
   const sourceFile = project.getSourceFile(filePath);
-  if (sourceFile) {
-    project.removeSourceFile(sourceFile);
+  if (sourceFile) project.removeSourceFile(sourceFile);
+
+  if (++removeCount % 50 === 0) {
+    project
+      .getSourceFiles()
+      .filter((f) => !existsSync(f.getFilePath()))
+      .forEach((f) => project.removeSourceFile(f));
   }
 }

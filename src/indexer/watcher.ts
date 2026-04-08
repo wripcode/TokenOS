@@ -12,14 +12,20 @@ export interface WatcherOptions {
 export function startWatcher(watchPath: string, options: WatcherOptions = {}): FSWatcher {
   const ig = createIgnorer(watchPath);
 
+  const IGNORED_DIRS = new Set(["node_modules", ".next", ".git", "dist", ".tokenos", ".turbo", ".cache", "coverage", "out"]);
+
   const watcher = chokidar.watch(watchPath, {
     ignored: (testPath: string) => {
-      // Don't ignore the root watch directory
       if (testPath === watchPath) return false;
+      const base = testPath.split("/").pop() ?? "";
+      if (IGNORED_DIRS.has(base)) return true;
       return isIgnored(ig, watchPath, testPath);
     },
     persistent: true,
-    ignoreInitial: true, // initial index is done by indexDirectory() — only watch for changes
+    ignoreInitial: true,
+    usePolling: false,
+    interval: 1000,
+    binaryInterval: 3000,
     awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
   });
 

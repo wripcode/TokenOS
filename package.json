@@ -1,6 +1,6 @@
 {
   "name": "tokenos",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Local-first codebase graph intelligence for AI MCP assistants, reducing token usage by retrieving only the most relevant code and context.",
   "type": "module",
   "bin": {

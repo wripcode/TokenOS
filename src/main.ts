@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
-// ───── Version flag ───────────────────────────────────────────────────────────
 if (process.argv.includes("--version")) {
-  console.log("2.0.1");
+  console.log("2.1.0");
   process.exit(0);
 }
 
-import { existsSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "fs";
+import { join } from "path";
 import { config } from "./config.js";
 import { startServer } from "./server/index.js";
 import { startWatcher } from "./indexer/index.js";
@@ -18,7 +18,22 @@ import { backfillEmbeddings, checkOllama } from "./embeddings/index.js";
 import { startVisualizationServer } from "./server/visualize.js";
 import { logger } from "./utils/logger.js";
 
-// ───── Validate ───────────────────────────────────────────────────────────────
+if (process.argv.includes("kill") || process.argv[2] === "kill") {
+  const killPidFile = join(process.cwd(), ".tokenos", "tokenos.pid");
+  if (existsSync(killPidFile)) {
+    const pid = parseInt(readFileSync(killPidFile, "utf-8").trim(), 10);
+    try {
+      process.kill(pid, "SIGTERM");
+      unlinkSync(killPidFile);
+      console.log(`killed tokenos process (pid ${pid})`);
+    } catch {
+      console.log(`process ${pid} already dead`);
+    }
+  } else {
+    console.log("no tokenos process running");
+  }
+  process.exit(0);
+}
 
 if (!existsSync(config.watchPath)) {
   logger.error("tokenos", `watch path does not exist: ${config.watchPath}`);
@@ -33,14 +48,45 @@ process.on("unhandledRejection", (reason) => {
   logger.error("tokenos", "unhandled rejection:", reason);
 });
 
-// ───── Bootstrap ──────────────────────────────────────────────────────────────
+const PID_FILE = join(config.watchPath, ".tokenos", "tokenos.pid");
+
+async function acquireLock(): Promise<void> {
+  if (existsSync(PID_FILE)) {
+    const oldPid = parseInt(readFileSync(PID_FILE, "utf-8").trim(), 10);
+    if (oldPid && oldPid !== process.pid) {
+      try {
+        process.kill(oldPid, 0);
+        process.kill(oldPid, "SIGTERM");
+        for (let i = 0; i < 40; i++) {
+          try {
+            process.kill(oldPid, 0);
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          } catch {
+            break;
+          }
+        }
+      } catch {}
+    }
+  }
+  writeFileSync(PID_FILE, String(process.pid), "utf-8");
+}
+
+function releaseLock(): void {
+  try {
+    if (existsSync(PID_FILE)) {
+      const storedPid = parseInt(readFileSync(PID_FILE, "utf-8").trim(), 10);
+      if (storedPid === process.pid) unlinkSync(PID_FILE);
+    }
+  } catch {}
+}
 
 async function main(): Promise<void> {
+  await acquireLock();
+
   const bootStart = Date.now();
   logger.info("tokenos", `starting — watching: ${config.watchPath}`);
   logger.info("tokenos", `database: ${config.dbPath}`);
 
-  // Optionally start visualization UI
   if (config.ui.enabled) {
     try {
       await startVisualizationServer();
@@ -49,25 +95,20 @@ async function main(): Promise<void> {
     }
   }
 
-  // Initial full index of the watched directory
   logger.info("tokenos", "running initial index...");
   const totals = await indexDirectory(config.watchPath);
   logger.success("tokenos", `initial index complete: ${totals.files} files, ${totals.nodes} nodes, ${totals.edges} edges`);
 
-  // Compute importance scores for all nodes
   const { updated: scored } = computeAllImportance();
   logger.success("tokenos", `importance scoring complete: ${scored} nodes scored`);
 
-  // Start chokidar watcher for incremental updates (ignoreInitial=true — initial index is done)
   const watcher = startWatcher(config.watchPath, {
     onReady: () => logger.success("watcher", "ready"),
   });
 
-  // Start MCP stdio server first — client connects immediately without waiting for embeddings
   const ollamaOk = await checkOllama();
   await startServer();
 
-  // Back-fill embeddings non-blocking — large projects won't timeout the MCP handshake
   if (ollamaOk) {
     logger.info("tokenos", `embedding model: ${config.ollama.model} (online)`);
     backfillEmbeddings()
@@ -82,7 +123,7 @@ async function main(): Promise<void> {
   }
 
   logger.viteLike({
-    version: "2.0.1",
+    version: "2.1.0",
     timeMs: Date.now() - bootStart,
     localUrl: config.ui.enabled ? `http://localhost:${config.ui.port}/graph` : undefined,
     ollamaOk,
@@ -91,14 +132,12 @@ async function main(): Promise<void> {
     model: config.ollama.model,
   });
 
-  // Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info("tokenos", `shutting down (${signal})...`);
+    releaseLock();
     try {
       await watcher.close();
-    } catch {
-      // ignore
-    }
+    } catch {}
     process.exit(0);
   };
 
@@ -106,6 +145,14 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.stdin.on("close", () => shutdown("client disconnected"));
   process.stdout.on("close", () => shutdown("stdout closed"));
+
+  const heartbeat = setInterval(() => {
+    if (process.stdin.destroyed || process.stdout.destroyed) {
+      clearInterval(heartbeat);
+      shutdown("pipe destroyed");
+    }
+  }, 30_000);
+  heartbeat.unref();
 }
 
 main().catch((err) => {
