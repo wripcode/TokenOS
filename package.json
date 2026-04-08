@@ -1,6 +1,6 @@
 {
   "name": "tokenos",
-  "version": "1.2.1",
+  "version": "2.0.0",
   "description": "TokenOS is a memory layer for AI that reduces token usage by retrieving only the most relevant code and context.",
   "type": "module",
   "bin": {

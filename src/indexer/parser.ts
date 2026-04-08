@@ -182,6 +182,9 @@ export function parseFile(filePath: string): ParseResult {
     if (isComponent) {
       const role = inferRole(name, fileName);
       if (role) meta.role = role;
+    } else if (/^use[A-Z]/.test(name)) {
+      // React hook — tag for `find_nodes("hook", type: "function")` discoverability
+      meta.role = "hook";
     }
     if (feature) meta.feature = feature;
     if (route) meta.route = route;
@@ -396,8 +399,40 @@ export function parseFile(filePath: string): ParseResult {
        summary = `Class '${node.name}'.`;
     } else if (node.type === "route") {
        summary = `Next.js route definition for path '${node.name}'.`;
+    } else if (node.type === "interface") {
+      // Extract field names from snippet for FTS discoverability
+      const fields = (node.code_snippet ?? "")
+        .split("\n")
+        .filter(l => l.includes(":") && !l.trim().startsWith("interface"))
+        .map(l => l.trim().replace(/;$/, "").trim())
+        .slice(0, 8);
+      summary = fields.length > 0
+        ? `Interface '${node.name}' with fields: ${fields.join(", ")}.`
+        : `Interface '${node.name}'.`;
+    } else if (node.type === "type_alias") {
+      const shortCode = (node.code_snippet ?? "").replace(/\n/g, " ").trim();
+      summary = shortCode.length < 120
+        ? `Type alias: ${shortCode}`
+        : `Type alias '${node.name}'.`;
+    } else if (node.type === "enum") {
+      const members = (node.code_snippet ?? "")
+        .split("\n")
+        .filter(l => l.trim() && !l.includes("enum") && !l.includes("{") && !l.includes("}"))
+        .map(l => l.trim().replace(/,?$/, ""))
+        .slice(0, 8);
+      summary = members.length > 0
+        ? `Enum '${node.name}' with values: ${members.join(", ")}.`
+        : `Enum '${node.name}'.`;
     } else if (node.type === "file") {
-       summary = `File '${fileName}'.`;
+      // Behavioral summary: list the main symbols the file defines
+      const definedSymbols = nodes
+        .filter(n => n.id !== node.id && n.type !== "import")
+        .map(n => `${n.name}(${n.type})`)
+        .slice(0, 6);
+      const featureStr = meta.feature ? ` Feature: ${meta.feature}.` : "";
+      summary = definedSymbols.length > 0
+        ? `File '${fileName}' defining ${definedSymbols.join(", ")}.${featureStr}`
+        : `File '${fileName}'.${featureStr}`;
     }
 
     if (summary) {

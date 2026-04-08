@@ -279,12 +279,13 @@ Returns: name, type, file path, code snippet (first 12 lines), importance score.
 **When**: Understanding what a function calls, what calls it, and what it imports.
 
 ```
-get_connections { id: "src/lib/auth.ts::validateToken" }
+get_connections { id: "src/lib/auth.ts::validateToken", include_reverse: true }
 ```
 
 Returns:
 - **Edges**: `CALLS`, `IMPORTS`, `EXPORTS`, `EXTENDS`, `DEFINES`
-- **Connected nodes**: sorted by importance
+- **Connected nodes**: sorted by importance (limit default 50)
+- **Used by**: nodes that use/call this node (when `include_reverse: true`)
 
 This is the key tool for understanding how code fits together without reading entire files.
 
@@ -304,6 +305,7 @@ Returns a BFS traversal — all nodes and edges reachable within `depth` hops. U
 |-------|---------|-------------|
 | `id` | required | Starting node |
 | `depth` | 2 | 1–3 hops |
+| `include_imports` | true | Set false to hide import nodes for a cleaner structural graph |
 
 ---
 
@@ -444,10 +446,13 @@ npm run dev      # re-index from scratch
 │  find_nodes { query: "handles login", mode: "semantic" }     │
 │                                                              │
 │  UNDERSTAND CONNECTIONS:                                     │
-│  get_connections { id: "file::name" }                        │
+│  get_connections { id: "file::name", include_reverse: true } │
 │                                                              │
 │  EXPLORE CONTEXT:                                            │
-│  explore { id: "file::name", depth: 1 }                     │
+│  explore { id: "file::name", depth: 1, include_imports: false}
+│                                                              │
+│  CHECK SYSTEM:                                               │
+│  status {}                                                   │
 │                                                              │
 │  FULL NODE DETAILS:                                          │
 │  get_node { id: "file::name" }                               │

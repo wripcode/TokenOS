@@ -206,6 +206,19 @@ export function getConnectedNodes(nodeId: string): GraphNode[] {
   return stmtGetConnectedNodes.all(nodeId);
 }
 
+// Reverse: nodes that point TO nodeId (callers, importers — impact analysis)
+const stmtGetReverseConnectedNodes = db.prepare<[string], GraphNode>(`
+  SELECT n.*
+  FROM   nodes n
+  JOIN   edges e ON n.id = e.from_node
+  WHERE  e.to_node = ?
+  ORDER BY n.importance DESC
+`);
+
+export function getReverseConnectedNodes(nodeId: string): GraphNode[] {
+  return stmtGetReverseConnectedNodes.all(nodeId);
+}
+
 // ───── Graph-wide helpers ────────────────────────────────────────────────────
 
 const stmtInDegree = db.prepare<[string], { count: number }>(`

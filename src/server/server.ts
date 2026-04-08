@@ -7,14 +7,16 @@ import {
   getNeighbors,
   getNodesWithEmbeddings,
   getConnectedNodes,
+  getReverseConnectedNodes,
   getTopNodes,
   searchNodesExtended,
   searchMemories,
   getNodesByNameAndTypeExtended,
   searchNodesByTerms,
   ftsSearch,
+  db,
 } from "../db/index.js";
-import { generateEmbedding, rankBySimilarity } from "../embeddings/index.js";
+import { generateEmbedding, rankBySimilarity, checkOllama } from "../embeddings/index.js";
 import { logger } from "../utils/logger.js";
 import type { GraphNode, SearchResult, QueryMode } from "../types.js";
 
@@ -504,12 +506,16 @@ Returns:
 
 Args:
   - id (string): Node ID to find connections for
+  - include_reverse (boolean, default false): Include nodes that USE this node (callers, importers). Off by default — hub nodes can have hundreds of callers.
+  - limit (integer, default 50): Max connected nodes to return (1–100)
   - response_format: 'json' (default) or 'markdown'
 
 Returns:
-  Connected nodes and their relationships.`,
+  Connected nodes and their relationships. When include_reverse is true, also returns used_by array.`,
       inputSchema: z.object({
         id: NodeIdSchema,
+        include_reverse: z.boolean().default(false).describe("Include reverse edges (nodes that USE this node). Off by default to keep responses compact."),
+        limit: z.number().int().min(1).max(100).default(50).describe("Max connected nodes to return"),
         response_format: ResponseFormatSchema,
       }),
       annotations: {
@@ -519,7 +525,7 @@ Returns:
         openWorldHint: false,
       },
     },
-    async ({ id, response_format }) => {
+    async ({ id, include_reverse, limit, response_format }) => {
       const node = getNode(id);
       if (!node) {
         return {
@@ -534,18 +540,21 @@ Returns:
       }
 
       const edges = getNeighbors(id);
-      const connectedNodes = getConnectedNodes(id);
-      const output = { 
-        node: compressNode(node), 
-        edges, 
-        connected_nodes: connectedNodes.map(n => compressNode(n)) 
+      const connectedNodes = getConnectedNodes(id).slice(0, limit);
+      const usedBy = include_reverse ? getReverseConnectedNodes(id).slice(0, limit) : [];
+
+      const output: Record<string, unknown> = {
+        node: compressNode(node),
+        edges,
+        connected_nodes: connectedNodes.map(n => compressNode(n)),
+        ...(include_reverse ? { used_by: usedBy.map(n => compressNode(n)) } : {}),
       };
 
       let text: string;
       if (response_format === "markdown") {
         const lines = [
           `# Neighbors of \`${node.name}\``,
-          `**${edges.length}** edges · **${connectedNodes.length}** connected nodes`,
+          `**${edges.length}** edges · **${connectedNodes.length}** connected nodes${include_reverse ? ` · **${usedBy.length}** callers` : ""}`,
           "",
           "## Edges",
         ];
@@ -555,6 +564,12 @@ Returns:
         if (connectedNodes.length > 0) {
           lines.push("", "## Connected Nodes");
           for (const n of connectedNodes) {
+            lines.push(`- **${n.name}** \`(${n.type})\` — importance: ${n.importance}`);
+          }
+        }
+        if (include_reverse && usedBy.length > 0) {
+          lines.push("", "## Used By (callers / importers)");
+          for (const n of usedBy) {
             lines.push(`- **${n.name}** \`(${n.type})\` — importance: ${n.importance}`);
           }
         }
@@ -580,6 +595,7 @@ Returns:
 Args:
   - id (string): Starting node ID
   - depth (1–3, default 2): Max traversal depth
+  - include_imports (boolean, default true): Include import nodes in traversal. Set false to reduce noise.
 
 Returns:
   Local graph (nodes + relationships).`,
@@ -592,6 +608,10 @@ Returns:
           .max(3)
           .default(2)
           .describe("Max traversal depth (1–3, default 2)"),
+        include_imports: z
+          .boolean()
+          .default(true)
+          .describe("Include import nodes in traversal. Set false for cleaner structural exploration."),
       }),
       annotations: {
         readOnlyHint: true,
@@ -600,7 +620,7 @@ Returns:
         openWorldHint: false,
       },
     },
-    async ({ id, depth }) => {
+    async ({ id, depth, include_imports }) => {
       const startNode = getNode(id);
       if (!startNode) {
         return {
@@ -614,11 +634,60 @@ Returns:
         };
       }
 
-      const subgraph = buildSubgraph(id, depth);
+      // When include_imports is false, restrict BFS to structural node types only
+      const opts = include_imports
+        ? undefined
+        : { nodeTypes: ["function", "class", "component", "file", "interface", "type_alias", "enum", "route", "variable"] };
+      const subgraph = buildSubgraph(id, depth, opts);
       const output = compressGraph(subgraph);
 
       return {
         content: [{ type: "text", text: truncate(JSON.stringify(output, null, 2)) }],
+        structuredContent: output,
+      };
+    },
+  );
+
+  // ── status ─────────────────────────────────────────────────────────────────────────
+  server.registerTool(
+    "status",
+    {
+      title: "Status",
+      description: "Get TokenOS system status — DB stats, Ollama availability, indexed counts, and capability flags.",
+      inputSchema: z.object({}),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async () => {
+      const ollamaOk = await checkOllama();
+      const nodeCount = (db.prepare("SELECT COUNT(*) as c FROM nodes").get() as { c: number }).c;
+      const edgeCount = (db.prepare("SELECT COUNT(*) as c FROM edges").get() as { c: number }).c;
+      const embeddingCount = (db.prepare("SELECT COUNT(*) as c FROM nodes WHERE embedding IS NOT NULL").get() as { c: number }).c;
+      const ftsCount = (() => {
+        try { return (db.prepare("SELECT COUNT(*) as c FROM nodes_fts").get() as { c: number }).c; } catch { return 0; }
+      })();
+
+      const output = {
+        version: "2.0.0",
+        nodes: nodeCount,
+        edges: edgeCount,
+        embeddings: embeddingCount,
+        fts_indexed: ftsCount,
+        capabilities: {
+          text_search: true,
+          fts5: ftsCount > 0,
+          semantic_search: ollamaOk,
+          graph_traversal: true,
+          reverse_edges: true,
+        },
+      };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
         structuredContent: output,
       };
     },

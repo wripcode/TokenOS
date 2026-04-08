@@ -2,7 +2,7 @@
 
 // ───── Version flag ───────────────────────────────────────────────────────────
 if (process.argv.includes("--version")) {
-  console.log("1.1.1");
+  console.log("2.0.0");
   process.exit(0);
 }
 
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   }
 
   logger.viteLike({
-    version: "1.1.1",
+    version: "2.0.0",
     timeMs: Date.now() - bootStart,
     localUrl: config.ui.enabled ? `http://localhost:${config.ui.port}/graph` : undefined,
     ollamaOk,

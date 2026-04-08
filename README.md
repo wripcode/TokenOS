@@ -229,10 +229,12 @@ Get directly related code elements.
 ```
 Args:
   id              (string)  — Node ID
+  include_reverse (optional) — true/false, default false. Include nodes that USE this node.
+  limit           (optional) — 1–100, default 50
   response_format (optional) — 'json' or 'markdown'
 ```
 
-**Returns:** Connected nodes and their relationships
+**Returns:** Connected nodes and their relationships. When `include_reverse` is true, also includes `used_by` array.
 
 ### `explore`
 
@@ -242,6 +244,7 @@ Explore surrounding code context from a starting point.
 Args:
   id              (string)  — Starting node ID
   depth           (optional) — 1–3, default 2
+  include_imports (optional) — true/false, default true. Set false to hide import nodes.
 ```
 
 **Returns:** Local graph (nodes + relationships)
@@ -257,6 +260,16 @@ Args:
 ```
 
 **Returns:** Ranked list of high-impact nodes
+
+### `status`
+
+Get TokenOS system status, statistics, and available capabilities.
+
+```
+Args: (none)
+```
+
+**Returns:** System stats (node counts, edge counts, FTS index size) and capability flags (text_search, fts5, semantic_search, graph_traversal, reverse_edges).
 
 ---
 
