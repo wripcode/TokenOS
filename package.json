@@ -31,6 +31,7 @@
     "type": "git",
     "url": "git+https://github.com/wripcode/tokenos.git"
   },
+  "homepage": "https://wripcode.github.io/TokenOS/",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/main.ts",
