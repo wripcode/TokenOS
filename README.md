@@ -80,6 +80,18 @@ That's it. The server will:
 
 ---
 
+## Releasing
+
+TokenOS uses GitHub Actions for automated NPM publishing. To release a new version:
+
+1. Bump the version in `package.json` (e.g., `npm version patch`)
+2. Push the tag to the `main` branch (`git push origin main --tags`)
+3. The `Publish NPM Package` GitHub Action will automatically build and publish the new version to the NPM registry.
+
+> **Note:** The documentation website is maintained on the `gh-pages` branch, which uses GitHub Actions to automatically deploy to GitHub Pages on every push.
+
+---
+
 ## Database Location
 
 Each project gets its own isolated database at:
