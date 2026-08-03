@@ -6,6 +6,7 @@ if (process.argv.includes("--version")) {
 }
 
 if (process.argv.includes("--install")) {
+  // @ts-ignore - Valid Node16 module resolution, tsc false positive
   const { installMcpConfig } = await import("./install.js");
   installMcpConfig();
   process.exit(0);
