@@ -21,6 +21,14 @@ export interface TokenOSConfig {
     enabled: boolean;
     port: number;
   };
+  distillation: {
+    /** Automatically distill after every N captured sessions. Default: 5 */
+    everyNSessions: number;
+  };
+  docs: {
+    /** Additional directories (relative to watchPath) to index as searchable docs. Default: ["dev-data", "docs"] */
+    paths: string[];
+  };
   /** Derived: absolute path to the SQLite DB for the target project */
   dbPath: string;
 }
@@ -78,10 +86,20 @@ function buildConfig(): TokenOSConfig {
   // Per-project DB: <watchPath>/.tokenos/graph.db
   const dbPath = join(watchPath, ".tokenos", "graph.db");
 
+  // Distillation settings
+  const fileDist = (file.distillation ?? {}) as Record<string, unknown>;
+  const everyNSessions = (fileDist.everyNSessions as number | undefined) ?? 5;
+
+  // Docs ingestion paths
+  const fileDocs = (file.docs ?? {}) as Record<string, unknown>;
+  const docPaths = (fileDocs.paths as string[] | undefined) ?? ["dev-data", "docs"];
+
   return {
     watchPath,
     ollama: { url: ollamaUrl, model: ollamaModel },
     ui: { enabled: uiEnabled, port: uiPort },
+    distillation: { everyNSessions },
+    docs: { paths: docPaths },
     dbPath,
   };
 }

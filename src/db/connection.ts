@@ -94,3 +94,68 @@ try {
 } catch {
   // FTS5 not available or table already exists — ignore, text search still works
 }
+
+// FTS5 for memories — BM25-ranked search across title, summary, and tags
+try {
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+      memory_id UNINDEXED,
+      title,
+      summary,
+      tags
+    );
+  `);
+} catch {
+  // FTS5 not available or table already exists — ignore, LIKE fallback still works
+}
+
+// ── Phase 3: Sessions ─────────────────────────────────────────────────────────
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id           TEXT PRIMARY KEY,
+      summary      TEXT NOT NULL,
+      decisions    TEXT NOT NULL,   -- JSON array
+      patterns     TEXT NOT NULL,   -- JSON array
+      next_context TEXT,
+      tags         TEXT NOT NULL,   -- JSON array
+      created_at   INTEGER NOT NULL
+    );
+  `);
+} catch {
+  // Already exists — ignore
+}
+
+try {
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS sessions_fts USING fts5(
+      session_id UNINDEXED,
+      summary,
+      tags
+    );
+  `);
+} catch {
+  // FTS5 not available or table already exists — ignore
+}
+
+// ── Phase 4: Project Profiles ─────────────────────────────────────────────────
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_profiles (
+      id                TEXT PRIMARY KEY,
+      project_path      TEXT NOT NULL UNIQUE,
+      summary           TEXT NOT NULL,
+      decisions         TEXT NOT NULL,   -- JSON array
+      patterns          TEXT NOT NULL,   -- JSON array
+      current_state     TEXT,
+      session_count     INTEGER DEFAULT 0,
+      last_distilled_at INTEGER NOT NULL,
+      created_at        INTEGER NOT NULL
+    );
+  `);
+} catch {
+  // Already exists — ignore
+}
+

@@ -106,3 +106,25 @@ export interface ConversationMemory {
   created_at: number;
   embedding?: string; // or number[] depending on storage
 }
+
+export interface SessionCapture {
+  id: string;             // "session::uuid8"
+  summary: string;        // What happened this session
+  decisions: string[];    // Decisions made
+  patterns: string[];     // Patterns learned or reinforced
+  next_context: string;   // Where we left off
+  tags: string[];
+  created_at: number;
+}
+
+export interface ProjectProfile {
+  id: string;                // "profile::project-hash"
+  project_path: string;      // The watchPath this profile belongs to
+  summary: string;           // One-paragraph project description
+  decisions: string[];       // Deduplicated across all sessions
+  patterns: string[];        // Deduplicated across all sessions
+  current_state: string;     // Latest next_context from most recent session
+  session_count: number;     // How many sessions contributed
+  last_distilled_at: number;
+  created_at: number;
+}

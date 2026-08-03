@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { randomUUID } from "crypto";
 import {
   getNode,
   getNodesByName,
@@ -11,14 +13,27 @@ import {
   getTopNodes,
   searchNodesExtended,
   searchMemories,
+  getAllMemories,
+  upsertMemory,
+  deleteMemory,
+  upsertSession,
+  searchSessions,
+  getSessionCount,
   getNodesByNameAndTypeExtended,
   searchNodesByTerms,
   ftsSearch,
   db,
 } from "../db/index.js";
+import {
+  distillProfile,
+  getProjectProfile,
+  profileToMarkdown,
+  shouldDistill,
+} from "../distillation/distill.js";
+import { config } from "../config.js";
 import { generateEmbedding, rankBySimilarity, checkOllama } from "../embeddings/index.js";
 import { logger } from "../utils/logger.js";
-import type { GraphNode, SearchResult, QueryMode } from "../types.js";
+import type { GraphNode, SearchResult, QueryMode, ConversationMemory, SessionCapture } from "../types.js";
 
 // ───── Constants ──────────────────────────────────────────────────────────────
 
@@ -751,6 +766,369 @@ Returns:
         };
       }
     },
+  );
+
+  // ── save_memory ──────────────────────────────────────────────────────────────
+  server.registerTool(
+    "save_memory",
+    {
+      title: "Save Memory",
+      description: `Save a piece of knowledge, decision, or context for future sessions.
+
+Use this when you discover something worth remembering: architecture decisions,
+user preferences, project patterns, debugging insights, or workflow notes.
+
+Args:
+  - title (string): Short descriptive title
+  - summary (string): The actual content to remember
+  - key_points (string[], optional): Bullet-point takeaways
+  - tags (string[], optional): Categorization tags
+
+Returns:
+  Confirmation with the memory ID.`,
+      inputSchema: z.object({
+        title: z.string().describe("Short descriptive title for the memory"),
+        summary: z.string().describe("The content to remember — decisions, patterns, context"),
+        key_points: z.array(z.string()).default([]).describe("Bullet-point takeaways"),
+        tags: z.array(z.string()).default(["memory"]).describe("Categorization tags"),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ title, summary, key_points, tags }) => {
+      const id = `mem::${randomUUID().slice(0, 8)}`;
+      const memory: ConversationMemory = {
+        id,
+        title,
+        summary,
+        key_points,
+        tags,
+        created_at: Date.now(),
+      };
+
+      upsertMemory(memory);
+      logger.success("memory", `saved: "${title}" (${id})`);
+
+      const output = { saved: true, id, title, tags };
+      return {
+        content: [{ type: "text", text: `Memory saved: "${title}" (${id})` }],
+        structuredContent: output,
+      };
+    },
+  );
+
+  // ── list_memories ───────────────────────────────────────────────────────────
+  server.registerTool(
+    "list_memories",
+    {
+      title: "List Memories",
+      description: `List all stored memories, optionally filtered by a search query.
+
+Args:
+  - query (string, optional): Search term to filter memories. Omit to list all.
+  - limit (integer, optional): Max results (default 20)
+
+Returns:
+  List of memories with title, summary, tags, and creation date.`,
+      inputSchema: z.object({
+        query: z.string().optional().describe("Search term to filter memories. Omit to list all."),
+        limit: z.number().int().min(1).max(100).default(20).describe("Max results to return"),
+      }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ query, limit }) => {
+      const memories = query ? searchMemories(query) : getAllMemories();
+      const page = memories.slice(0, limit);
+
+      const output = {
+        total: memories.length,
+        count: page.length,
+        memories: page.map(m => ({
+          id: m.id,
+          title: m.title,
+          summary: m.summary.length > 200 ? m.summary.slice(0, 200) + "..." : m.summary,
+          key_points: m.key_points,
+          tags: m.tags,
+          created_at: new Date(m.created_at).toISOString(),
+        })),
+      };
+
+      const lines = [
+        `# Memories (${page.length}/${memories.length})`,
+        "",
+        ...page.map(m =>
+          `- **${m.title}** \`${m.id}\`\n  ${m.tags.map(t => `#${t}`).join(" ")} · ${new Date(m.created_at).toLocaleDateString()}`
+        ),
+      ];
+
+      return {
+        content: [{ type: "text", text: truncate(lines.join("\n")) }],
+        structuredContent: output,
+      };
+    },
+  );
+
+  // ── delete_memory ───────────────────────────────────────────────────────────
+  server.registerTool(
+    "delete_memory",
+    {
+      title: "Delete Memory",
+      description: `Delete a stored memory by its ID.
+
+Args:
+  - id (string): The memory ID to delete (e.g. 'mem::a1b2c3d4')
+
+Returns:
+  Confirmation of deletion.`,
+      inputSchema: z.object({
+        id: z.string().describe("Memory ID to delete"),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ id }) => {
+      const deleted = deleteMemory(id);
+      if (!deleted) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Memory not found: "${id}". Use list_memories to find the correct ID.` }],
+        };
+      }
+
+      logger.info("memory", `deleted: ${id}`);
+      return {
+        content: [{ type: "text", text: `Memory deleted: ${id}` }],
+        structuredContent: { deleted: true, id },
+      };
+    },
+  );
+
+  // ── capture_session ───────────────────────────────────────────────────────
+  server.registerTool(
+    "capture_session",
+    {
+      title: "Capture Session",
+      description: `Save structured context at the end of a work session.
+
+Call this before the conversation ends to preserve what happened,
+what decisions were made, and where to pick up next time.
+
+Args:
+  - summary: What happened this session
+  - decisions: Decisions made (architecture, patterns, trade-offs)
+  - patterns: Patterns reinforced or newly learned
+  - next_context: Where we left off — breadcrumb for the next session
+  - tags: Categorization tags (defaults to ["session"])
+
+Returns:
+  Confirmation with session ID. Triggers distillation if N sessions reached.`,
+      inputSchema: z.object({
+        summary: z.string().describe("What happened this session"),
+        decisions: z.array(z.string()).default([]).describe("Decisions made this session"),
+        patterns: z.array(z.string()).default([]).describe("Patterns reinforced or learned"),
+        next_context: z.string().default("").describe("Where we left off — breadcrumb for next session"),
+        tags: z.array(z.string()).default(["session"]).describe("Categorization tags"),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ summary, decisions, patterns, next_context, tags }) => {
+      const id = `session::${randomUUID().slice(0, 8)}`;
+      const session: SessionCapture = {
+        id,
+        summary,
+        decisions,
+        patterns,
+        next_context,
+        tags,
+        created_at: Date.now(),
+      };
+
+      upsertSession(session);
+      logger.success("session", `captured: "${summary.slice(0, 60)}..." (${id})`);
+
+      let distilled = false;
+      if (shouldDistill(config.distillation.everyNSessions)) {
+        try {
+          distillProfile();
+          distilled = true;
+          logger.success("distill", `profile updated after ${getSessionCount()} sessions`);
+        } catch (err) {
+          logger.warn("distill", `distillation failed: ${String(err)}`);
+        }
+      }
+
+      const output = {
+        saved: true,
+        id,
+        session_count: getSessionCount(),
+        distillation_ran: distilled,
+      };
+
+      return {
+        content: [{
+          type: "text",
+          text: `Session captured (${id}). Total sessions: ${output.session_count}.${distilled ? " Project profile updated." : ""}`,
+        }],
+        structuredContent: output,
+      };
+    },
+  );
+
+  // ── get_project_context ────────────────────────────────────────────────────
+  server.registerTool(
+    "get_project_context",
+    {
+      title: "Get Project Context",
+      description: `Get the distilled project profile — decisions, patterns, and current state.
+
+Returns a condensed view of everything learned across all past sessions.
+Use this at the start of a session to orient yourself quickly.
+
+Returns:
+  Markdown-formatted project profile, or instructions to capture sessions first.`,
+      inputSchema: z.object({}),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async () => {
+      const profile = getProjectProfile(config.watchPath);
+
+      if (!profile) {
+        const sessionCount = getSessionCount();
+        const msg = sessionCount === 0
+          ? "No project profile yet. Use capture_session at the end of a few work sessions to build one."
+          : `No profile yet (${sessionCount} sessions recorded but threshold not reached). Call capture_session ${config.distillation.everyNSessions - (sessionCount % config.distillation.everyNSessions)} more time(s) to trigger distillation.`;
+        return {
+          content: [{ type: "text", text: msg }],
+          structuredContent: { profile: null, message: msg },
+        };
+      }
+
+      const markdown = profileToMarkdown(profile);
+      return {
+        content: [{ type: "text", text: truncate(markdown) }],
+        structuredContent: { ...profile } as Record<string, unknown>,
+      };
+    },
+  );
+
+  // ── search_docs ──────────────────────────────────────────────────────────────
+  server.registerTool(
+    "search_docs",
+    {
+      title: "Search Documents",
+      description: `Search through indexed project documentation (dev-data, docs, etc.).
+
+Docs are automatically indexed from directories specified in tokenos.config.json
+(default: dev-data/, docs/). Different from search which targets code nodes.
+
+Args:
+  - query (string): Search term
+  - limit (integer, optional): Max results (default 5)
+
+Returns:
+  List of matching documents with title, summary, and tags.`,
+      inputSchema: z.object({
+        query: z.string().describe("Search term"),
+        limit: z.number().int().min(1).max(20).default(5).describe("Max results"),
+      }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ query, limit }) => {
+      // Filter memories tagged as documents
+      const allResults = searchMemories(query).filter(
+        m => m.tags.includes("document") || m.tags.includes("knowledge")
+      );
+      const page = allResults.slice(0, limit);
+
+      const output = {
+        total: allResults.length,
+        count: page.length,
+        docs: page.map(m => ({
+          id: m.id,
+          title: m.title,
+          summary: m.summary.length > 300 ? m.summary.slice(0, 300) + "..." : m.summary,
+          key_points: m.key_points,
+          tags: m.tags,
+        })),
+      };
+
+      const lines = [
+        `# Document Search: "${query}" (${page.length} result${page.length !== 1 ? "s" : ""})`,
+        "",
+        ...page.map(m => [
+          `## ${m.title}`,
+          m.tags.map(t => `\`${t}\``).join(" "),
+          "",
+          m.summary.length > 300 ? m.summary.slice(0, 300) + "..." : m.summary,
+          "",
+        ].join("\n")),
+      ];
+
+      return {
+        content: [{ type: "text", text: truncate(lines.join("\n")) }],
+        structuredContent: output,
+      };
+    },
+  );
+
+  // ── MCP Resource: project-context (Phase 6 — auto-injection) ─────────────
+  //
+  // Exposes the distilled project profile as a named MCP resource.
+  // MCP clients that support Resources (including Antigravity) auto-load this
+  // at session start — the AI receives full project context before the first message.
+  server.resource(
+    "project-context",
+    "tokenos://project-context",
+    async () => {
+      const profile = getProjectProfile(config.watchPath);
+
+      const text = profile
+        ? profileToMarkdown(profile)
+        : [
+            "# Project Context",
+            "",
+            "No project profile has been distilled yet.",
+            "",
+            `Tip: Use \`capture_session\` at the end of work sessions.`,
+            `A profile is generated automatically after every ${config.distillation.everyNSessions} sessions.`,
+          ].join("\n");
+
+      return {
+        contents: [{
+          uri: "tokenos://project-context",
+          mimeType: "text/markdown",
+          text,
+        }],
+      };
+    }
   );
 
   return server;

@@ -16,9 +16,24 @@ import {
 import type { ParsedNode, ConversationMemory } from "../types.js";
 import { readFile } from "fs/promises";
 import { hashContent } from "./parser.js";
+import { config } from "../config.js";
 
 const SUPPORTED_EXTENSIONS = new Set([".ts", ".tsx"]);
 const MEMORY_EXTENSIONS = new Set([".md"]);
+
+/**
+ * Returns true for .md files that should be indexed: traditional /memory/ dirs
+ * OR any directory listed in config.docs.paths (e.g. dev-data, docs).
+ */
+function isDocOrMemoryPath(fullPath: string): boolean {
+  if (fullPath.includes("/memory/") || fullPath.includes("/memories/")) return true;
+  return config.docs.paths.some(p => fullPath.includes(`/${p}/`));
+}
+
+/** Returns true if this path is a doc directory (not a traditional memory dir). */
+function isDocPath(fullPath: string): boolean {
+  return config.docs.paths.some(p => fullPath.includes(`/${p}/`));
+}
 
 // ───── Index a single file ─────────────────────────────────────────────────── 
 
@@ -69,24 +84,30 @@ export function removeFile(filePath: string): void {
   removeFileAST(filePath);
 }
 
-// ───── Index a memory file ─────────────────────────────────────────────────── 
+// ───── Index a memory or doc file ────────────────────────────────────────────
 
 export async function indexMemoryFile(filePath: string): Promise<void> {
   const content = await readFile(filePath, "utf-8");
   const fileName = basename(filePath);
-  
-  // Very basic extraction
+
   const titleMatch = content.match(/^#\s+(.*)/m);
   const title = titleMatch ? titleMatch[1].trim() : fileName.replace(".md", "");
-  
+
   const tagsMatch = content.match(/tags:\s*\[(.*?)\]/i) || content.match(/tags:\s*(.*)/i);
-  const tags = tagsMatch ? tagsMatch[1].split(",").map(t => t.trim()) : ["memory"];
-  
+  const baseTags = isDocPath(filePath) ? ["document", "knowledge"] : ["memory"];
+  const parsedTags = tagsMatch
+    ? tagsMatch[1].split(",").map(t => t.trim())
+    : baseTags;
+
   const bulletMatch = content.match(/^[*-]\s+(.*)/gm);
-  const key_points = bulletMatch ? bulletMatch.map(b => b.replace(/^[*-]\s+/, "").trim()).slice(0, 10) : [];
-  
-  const summary = content.slice(0, 1000); // 1st 1000 chars as summary for now
-  
+  const key_points = bulletMatch
+    ? bulletMatch.map(b => b.replace(/^[*-]\s+/, "").trim()).slice(0, 10)
+    : [];
+
+  // Use first 1500 chars for docs (more context), 1000 for memories
+  const summaryLength = isDocPath(filePath) ? 1500 : 1000;
+  const summary = content.slice(0, summaryLength);
+
   const memoryId = `memory::${fileName}::${hashContent(content)}`;
 
   const memory: ConversationMemory = {
@@ -94,7 +115,7 @@ export async function indexMemoryFile(filePath: string): Promise<void> {
     title,
     summary,
     key_points,
-    tags,
+    tags: parsedTags,
     created_at: Date.now(),
   };
 
@@ -137,12 +158,12 @@ export async function indexDirectory(dirPath: string): Promise<{ files: number; 
              } catch (err) {
                logger.error("indexer", `Failed to index ${fullPath}:`, err);
              }
-           } else if (MEMORY_EXTENSIONS.has(ext) && (fullPath.includes("/memory/") || fullPath.includes("/memories/"))) {
+           } else if (MEMORY_EXTENSIONS.has(ext) && isDocOrMemoryPath(fullPath)) {
              try {
                await indexMemoryFile(fullPath);
                totals.files++;
              } catch (err) {
-               logger.error("indexer", `Failed to index memory ${fullPath}:`, err);
+               logger.error("indexer", `Failed to index doc/memory ${fullPath}:`, err);
              }
            }
         }
