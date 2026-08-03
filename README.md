@@ -390,31 +390,20 @@ All meta fields (role, tab, feature) are queryable via the `searchNodesExtended`
 
 ## Conversation Memory
 
-TokenOS includes a persistent memory system that gives your AI assistant long-term recall across sessions. It transforms the AI from a stateless agent into one that remembers your architectural decisions, rules, and preferences.
+TokenOS includes a persistent memory system for storing conversation context across sessions, allowing the AI to remember your architectural decisions and rules.
 
-### Current Capabilities (Phases 1 & 2)
+- **Direct Memory Writing**: The AI can save rules and context directly during a conversation using the `save_memory` tool.
+- **Smart Retrieval (FTS5)**: Memory search utilizes a high-performance Google-style relevance engine built on SQLite FTS5 for accurate context surfacing.
+- **Storage**: SQLite `memories` table with title, summary, key_points (JSON array), tags (JSON array), and optional embeddings.
+- **Auto-indexing**: Markdown files in `/memory/` or `/memories/` directories within the watched project are automatically parsed and stored.
+- **Integration**: Memories are automatically surfaced in `search` results.
 
-- **Direct Memory Writing**: The AI can save rules, decisions, or context directly during your conversation using the `save_memory` tool.
-- **Smart Retrieval (FTS5)**: Memory search utilizes a high-performance Google-style relevance engine built on SQLite FTS5, ensuring the AI finds the right context when it needs it.
-- **Example Scenario**:
-  - *You*: "Never use useEffect for data fetching. Only use TanStack React Query v5."
-  - *AI*: Saves this using `save_memory` as "Data Fetching Pattern".
-  - *Tomorrow*: You ask a fresh AI session to "fetch the user list". It internally searches, finds your saved memory via the smart FTS5 engine, and correctly generates React Query code without being reminded.
-
-### Memory Storage Details
-
-- **Storage**: SQLite `memories` table with title, summary, key_points (JSON), tags (JSON), and optional embeddings.
-- **Auto-indexing**: Markdown files in `/memory/` or `/memories/` directories are automatically parsed and stored.
-- **Integration**: Memories are automatically surfaced alongside code in `search` results.
-
-### Roadmap: The Auto-Context Engine (Phases 3-6)
-
-We are actively building toward an automated context system where the AI knows the state of the project before you even ask.
-
-- **Phase 3: Session Capture (The End-of-Day Summary)**: A `capture_session` tool for the AI to write structured summaries right before you close the chat (e.g., "Built the bulk-delete UI, needs API wiring.").
-- **Phase 4: Distillation (The Project Brain)**: A background process that condenses multiple past session captures into a single, clean "Project Profile" (Key Decisions, Current State).
-- **Phase 5: Document Ingestion (The Wiki)**: Instantly makes all existing design docs (like those in your `dev-data/` folder) searchable and automatically indexed.
-- **Phase 6: Auto-Injection (The Magic Trick)**: When you boot your IDE, TokenOS will silently hand the master Project Profile to the AI behind the scenes. When you say "Let's finish what we started", the AI will immediately know exactly what that means.
+### Auto-Context Engine (Roadmap)
+We are building toward an automated context system (Phases 3-6) where the AI knows the state of your project before you even ask:
+- **Session Capture**: End-of-day structured summaries of accomplishments and next steps.
+- **Distillation**: A background process that condenses multiple session captures into a single "Project Profile".
+- **Document Ingestion**: Instant indexing and searchability for existing design docs in folders like `dev-data/`.
+- **Auto-Injection**: Automatically handing the master Project Profile to the AI when you boot your IDE.
 
 ---
 

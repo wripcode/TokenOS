@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 
 if (process.argv.includes("--version")) {
-  console.log("2.1.0");
+  console.log("2.2.0");
+  process.exit(0);
+}
+
+if (process.argv.includes("--install")) {
+  const { installMcpConfig } = await import("./install.js");
+  installMcpConfig();
   process.exit(0);
 }
 
