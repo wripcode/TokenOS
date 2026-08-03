@@ -3,10 +3,12 @@ import { join } from "path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { logger } from "./utils/logger.js";
 
-const TOKENOS_MCP_CONFIG = {
-  command: "npx",
-  args: ["-y", "tokenos", "."],
-};
+function buildMcpConfig() {
+  return {
+    command: "npx",
+    args: ["-y", "tokenos", process.cwd()],
+  };
+}
 
 export function installMcpConfig(): void {
   const home = homedir();
@@ -39,7 +41,7 @@ export function installMcpConfig(): void {
         }
 
         // Add or update TokenOS config
-        config.mcpServers.tokenos = TOKENOS_MCP_CONFIG;
+        config.mcpServers.tokenos = buildMcpConfig();
 
         writeFileSync(path, JSON.stringify(config, null, 2), "utf-8");
         logger.success("install", `Added TokenOS to ${name} config at ${path}`);
@@ -58,7 +60,7 @@ export function installMcpConfig(): void {
       mkdirSync(join(home, ".gemini", "config"), { recursive: true });
       const defaultConfig = {
         mcpServers: {
-          tokenos: TOKENOS_MCP_CONFIG,
+          tokenos: buildMcpConfig(),
         },
       };
       writeFileSync(defaultPath, JSON.stringify(defaultConfig, null, 2), "utf-8");
