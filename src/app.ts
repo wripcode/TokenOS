@@ -116,7 +116,7 @@ async function main(): Promise<void> {
   }
 
   logger.viteLike({
-    version: "2.2.2",
+    version: "2.2.3",
     timeMs: Date.now() - bootStart,
     localUrl: config.ui.enabled ? `http://localhost:${config.ui.port}/graph` : undefined,
     ollamaOk,

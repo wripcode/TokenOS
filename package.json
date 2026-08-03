@@ -41,7 +41,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.8.0",
-    "better-sqlite3": "^11.9.1",
+    "better-sqlite3": "^13.0.2",
     "chokidar": "^4.0.3",
     "ignore": "^7.0.5",
     "picocolors": "^1.1.1",
