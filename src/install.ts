@@ -6,7 +6,7 @@ import { logger } from "./utils/logger.js";
 function buildMcpConfig() {
   return {
     command: "npx",
-    args: ["-y", "tokenos", process.cwd()],
+    args: ["-y", "tokenos", "."],
   };
 }
 
