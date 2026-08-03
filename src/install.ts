@@ -7,6 +7,9 @@ function buildMcpConfig() {
   return {
     command: "npx",
     args: ["-y", "tokenos", "."],
+    env: {
+      PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    },
   };
 }
 
