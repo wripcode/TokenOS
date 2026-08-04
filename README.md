@@ -26,6 +26,7 @@ npx tokenos .
 ```
 
 **What happens next?**
+
 1. TokenOS analyzes your code and creates a lightweight, local database inside `.tokenos/`.
 2. A file watcher starts, keeping the index perfectly in sync as you code.
 3. If this is your first time running TokenOS, it will prompt you to automatically connect it to your IDE.
@@ -38,14 +39,14 @@ Press `Y`, restart your IDE, and you're done! Your AI assistant now deeply under
 
 Once connected, your AI assistant will automatically use these tools whenever it needs context:
 
-| Tool | What it does |
-|---|---|
-| `search` | Smart natural-language search across your codebase (powered by local FTS5, plus Ollama if available). |
-| `find_nodes` | Locates specific functions, classes, components, or files. |
-| `get_node` | Reads the full code and details of a specific element. |
-| `get_connections` | Finds what a function calls, or what calls a function (dependency graph). |
-| `explore` | Navigates the surrounding architecture from a starting point. |
-| `top_nodes` | Identifies the most structurally important files and functions in your project. |
+| Tool              | What it does                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `search`          | Smart natural-language search across your codebase (powered by local FTS5, plus Ollama if available). |
+| `find_nodes`      | Locates specific functions, classes, components, or files.                                            |
+| `get_node`        | Reads the full code and details of a specific element.                                                |
+| `get_connections` | Finds what a function calls, or what calls a function (dependency graph).                             |
+| `explore`         | Navigates the surrounding architecture from a starting point.                                         |
+| `top_nodes`       | Identifies the most structurally important files and functions in your project.                       |
 
 ---
 
@@ -66,6 +67,7 @@ If the interactive prompt didn't detect your IDE, or if you prefer to configure 
 The command is simply `npx -y tokenos .`. Because of the `.`, you do not need to hardcode the path. The IDE automatically swaps the `.` for whatever project folder you currently have open on your screen.
 
 ### Antigravity IDE (`~/.gemini/config/mcp_config.json`)
+
 ```json
 {
   "mcpServers": {
@@ -78,6 +80,7 @@ The command is simply `npx -y tokenos .`. Because of the `.`, you do not need to
 ```
 
 ### Claude Desktop Mac (`~/Library/Application Support/Claude/claude_desktop_config.json`)
+
 ```json
 {
   "mcpServers": {
@@ -90,6 +93,7 @@ The command is simply `npx -y tokenos .`. Because of the `.`, you do not need to
 ```
 
 ### Cursor (`~/.cursor/mcp.json`)
+
 ```json
 {
   "mcpServers": {
@@ -104,7 +108,9 @@ The command is simply `npx -y tokenos .`. Because of the `.`, you do not need to
 ---
 
 ## 🚧 Roadmap: Auto-Context Engine
-We are building toward an automated context system where the AI knows the state of your project before you even ask:
+
+I am building toward an automated context system where the AI knows the state of your project before you even ask:
+
 - **Session Capture**: End-of-day structured summaries of accomplishments and next steps.
 - **Distillation**: A background process that condenses multiple session captures into a single "Project Profile".
 - **Document Ingestion**: Instant indexing and searchability for existing design docs.
