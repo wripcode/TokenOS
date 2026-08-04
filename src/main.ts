@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-if (process.argv.includes("--version")) {
-  console.log("2.2.3");
+if (process.argv.includes("--version") || process.argv.includes("-v")) {
+  console.log("2.3.0");
   process.exit(0);
 }
 

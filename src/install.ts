@@ -7,15 +7,12 @@ function buildMcpConfig() {
   return {
     command: "npx",
     args: ["-y", "tokenos", "."],
-    env: {
-      PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-    },
   };
 }
 
-export function installMcpConfig(): void {
+export function getConfigPaths() {
   const home = homedir();
-  const configPaths = [
+  return [
     {
       name: "Antigravity IDE",
       path: join(home, ".gemini", "config", "mcp_config.json"),
@@ -29,6 +26,33 @@ export function installMcpConfig(): void {
       path: join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
     },
   ];
+}
+
+export function getUnconfiguredIDEs(): Array<{ name: string; path: string }> {
+  const paths = getConfigPaths();
+  const unconfigured = [];
+
+  for (const { name, path } of paths) {
+    if (existsSync(path)) {
+      try {
+        const raw = readFileSync(path, "utf-8");
+        const config = JSON.parse(raw);
+        if (!config.mcpServers || !config.mcpServers.tokenos) {
+          unconfigured.push({ name, path });
+        }
+      } catch {
+        // If file is unreadable/invalid, assume unconfigured
+        unconfigured.push({ name, path });
+      }
+    }
+  }
+
+  return unconfigured;
+}
+
+export function installMcpConfig({ silent = false } = {}): void {
+  const home = homedir();
+  const configPaths = getConfigPaths();
 
   let installedCount = 0;
 
@@ -38,25 +62,21 @@ export function installMcpConfig(): void {
         const raw = readFileSync(path, "utf-8");
         const config = JSON.parse(raw);
 
-        // Ensure mcpServers object exists
         if (!config.mcpServers) {
           config.mcpServers = {};
         }
 
-        // Add or update TokenOS config
         config.mcpServers.tokenos = buildMcpConfig();
 
         writeFileSync(path, JSON.stringify(config, null, 2), "utf-8");
-        logger.success("install", `Added TokenOS to ${name} config at ${path}`);
+        if (!silent) logger.success("install", `Added TokenOS to ${name} config at ${path}`);
         installedCount++;
       } catch (err) {
-        logger.error("install", `Failed to update config for ${name} at ${path}:`, err);
+        if (!silent) logger.error("install", `Failed to update config for ${name} at ${path}:`, err);
       }
     }
   }
 
-  // If no configs were found, we can at least create the Antigravity one
-  // since it's the primary target environment for TokenOS.
   if (installedCount === 0) {
     const defaultPath = configPaths[0].path;
     try {
@@ -67,16 +87,18 @@ export function installMcpConfig(): void {
         },
       };
       writeFileSync(defaultPath, JSON.stringify(defaultConfig, null, 2), "utf-8");
-      logger.success("install", `Created new Antigravity config at ${defaultPath}`);
+      if (!silent) logger.success("install", `Created new Antigravity config at ${defaultPath}`);
       installedCount++;
     } catch (err) {
-      logger.error("install", `Failed to create default config at ${defaultPath}:`, err);
+      if (!silent) logger.error("install", `Failed to create default config at ${defaultPath}:`, err);
     }
   }
 
-  if (installedCount > 0) {
-    logger.success("install", "Installation complete. Please restart your IDE for changes to take effect.");
-  } else {
-    logger.warn("install", "Could not find or create any MCP configuration files.");
+  if (!silent) {
+    if (installedCount > 0) {
+      logger.success("install", "Installation complete. Please restart your IDE for changes to take effect.");
+    } else {
+      logger.warn("install", "Could not find or create any MCP configuration files.");
+    }
   }
 }

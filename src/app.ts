@@ -10,6 +10,10 @@ import { backfillEmbeddings, checkOllama } from "./embeddings/index.js";
 // @ts-ignore - Valid Node16 module resolution, IDE false positive
 import { startVisualizationServer } from "./server/visualize.js";
 import { logger } from "./utils/logger.js";
+// @ts-ignore
+import { getUnconfiguredIDEs, installMcpConfig } from "./install.js";
+import * as readline from "readline";
+import pc from "picocolors";
 
 if (process.argv.includes("kill") || process.argv[2] === "kill") {
   const killPidFile = join(process.cwd(), ".tokenos", "tokenos.pid");
@@ -116,7 +120,7 @@ async function main(): Promise<void> {
   }
 
   logger.viteLike({
-    version: "2.2.3",
+    version: "2.3.0",
     timeMs: Date.now() - bootStart,
     localUrl: config.ui.enabled ? `http://localhost:${config.ui.port}/graph` : undefined,
     ollamaOk,
@@ -124,6 +128,51 @@ async function main(): Promise<void> {
     cwd: config.watchPath,
     model: config.ollama.model,
   });
+
+  const promptFlag = join(config.watchPath, ".tokenos", "prompt_shown");
+  if (process.stdin.isTTY && !existsSync(promptFlag)) {
+    const unconfigured = getUnconfiguredIDEs();
+    if (unconfigured.length > 0) {
+      console.log();
+      console.log(pc.gray("─────────────────────────────────────────────────────"));
+      console.log(`  ✨ ${pc.bold(pc.cyan("TokenOS is running but not connected to your IDE."))}`);
+      console.log(pc.gray("     Your AI assistant won't have access to these tools"));
+      console.log(pc.gray("     until the MCP config is set up."));
+      console.log();
+      console.log("  Detected IDEs:");
+      unconfigured.forEach((ide) => {
+        console.log(`    ${pc.green("✓")} ${pc.white(ide.name)}`);
+      });
+      console.log();
+      
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+
+      const ask = () => new Promise<string>((resolve) => {
+        rl.question(`  Configure now? [Y/n]: `, (ans) => {
+          resolve(ans.trim().toLowerCase());
+        });
+      });
+
+      const answer = await ask();
+      rl.close();
+      
+      if (answer === "" || answer === "y" || answer === "yes") {
+        console.log();
+        installMcpConfig({ silent: true });
+        console.log(`  ${pc.green("✓")} Configured! ${pc.bold("Please restart your IDE for changes to take effect.")}`);
+      } else {
+        console.log();
+        console.log(`  Skipped. You can run '${pc.cyan("npx tokenos --install")}' anytime to set this up.`);
+      }
+      console.log(pc.gray("─────────────────────────────────────────────────────"));
+      console.log();
+    }
+    // Mark prompt as shown regardless of answer
+    writeFileSync(promptFlag, "1", "utf-8");
+  }
 
   const shutdown = async (signal: string) => {
     logger.info("tokenos", `shutting down (${signal})...`);
